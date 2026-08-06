@@ -12,6 +12,7 @@
 <title>Clocking Report — Olympic Paints</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js\'><\/script>')"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js\'><\/script>')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js\'><\/script>')"></script>
 <style>
 :root{
   --radius: 12px;
@@ -1679,137 +1680,266 @@ function exportSimple(headerRow, rows, filenameSuffix, sheetTitle) {
 }
 
 /* -------------------- Weekly Hours export (payroll format) --------------------
-   Matches the house format: title/subtitle/notes rows, a two-row header with one
-   merged block per week (Wed–Tue + a capped weekly Total), a Period Total /
-   Period OT (BCEA: hours beyond 45/week) summary, a Miss YTD column (missing
-   clock-in/out count across the full dataset, independent of the exported
-   period), and a TOTAL row. Used for both the single-week drill-down export and
-   the multi-week summary export, so every Weekly Hours download looks the same.
+   Matches the house format exactly: title/subtitle/notes rows, a two-row header
+   with one merged block per week (Wed–Tue + a capped weekly Total), a Period
+   Total / Period OT (BCEA: hours beyond 45 ordinary hours/week) summary, a Miss
+   YTD column (missing clock-in/out count across the full dataset, independent
+   of the exported period), full cell styling (fills/fonts/borders matching the
+   house palette), and live Excel formulas (not static values) for every total —
+   so the workbook still recalculates correctly if someone edits an hour cell.
+   Requires ExcelJS (the free SheetJS build can't write cell styles/formulas
+   together); XLSX.js remains in use for every other export in this app.
+   Used for both the single-week drill-down export and the multi-week summary
+   export, so every Weekly Hours download looks the same.
    -------------------------------------------------------------------------- */
-function buildWeeklyHoursAOA(weeksList, employer, search) {
-  const wk = weeklySummary(state.records);
-  let roster = wk.employees;
-  if (employer !== 'all') roster = roster.filter(e => e.employer === employer);
-  if (search) roster = roster.filter(e => (`${e.firstName} ${e.lastName} ${e.id}`).toLowerCase().includes(search));
+const WEEKLY_XLSX_COLORS = {
+  navy: 'FF1A3D6E', navyDark: 'FF0D2040', blue: 'FF2D6BA8', gold: 'FFF5C400',
+  darkText: 'FF1A1A18', grayText: 'FF666666', zebra: 'FFF7F6F3', white: 'FFFFFFFF',
+  lightBlue: 'FFE8EFF8', otBg: 'FFFDE7E9', otText: 'FFCC0000', otHeaderBg: 'FF8B0000',
+  missWarnBg: 'FFFDF0A0', missWarnText: 'FFA88000', missGoodBg: 'FFC8EDE7', missGoodText: 'FF1A5C50',
+  missHeaderBg: 'FFA88000', border: 'FFD0D0CC',
+  opBadgeBg: 'FFDCE6F5', opBadgeText: 'FF1A3D6E', psBadgeBg: 'FFC8EDE7', psBadgeText: 'FF1A5C50',
+};
 
-  // Full-history missing-punch count per employee, independent of the exported period.
-  const missYtdById = new Map();
-  missingLog(state.records).forEach(m => missYtdById.set(m.id, (missYtdById.get(m.id) || 0) + 1));
-
-  // Per-employee, per-week day/raw/capped/OT figures.
-  const perEmployee = roster.map(e => {
-    const weeks = weeksList.map(([weekKey, info]) => {
-      const dayMap = {};
-      let rawHours = 0;
-      state.records.forEach(r => {
-        if (r.id !== e.id || r.netMin == null) return;
-        if (r.dateObj < info.start) return;
-        const weekEnd = new Date(info.start.getTime()); weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
-        if (r.dateObj > weekEnd) return;
-        dayMap[dateKey(r.dateObj)] = toDecimalHours(r.netMin);
-        rawHours += toDecimalHours(r.netMin);
-      });
-      rawHours = r2(rawHours);
-      return { weekKey, info, dayMap, rawHours, cappedHours: r2(Math.min(rawHours, ORDINARY_WEEK_HOURS)), otHours: r2(Math.max(0, rawHours - ORDINARY_WEEK_HOURS)) };
-    });
-    const periodTotal = r2(weeks.reduce((s, w) => s + w.rawHours, 0));
-    const periodOT = r2(weeks.reduce((s, w) => s + w.otHours, 0));
-    return { employer: e.employer, id: e.id, name: `${e.firstName} ${e.lastName}`.trim(), weeks, periodTotal, periodOT, missYtd: missYtdById.get(e.id) || 0 };
-  });
-
-  // ---- Header text ----
-  const employerLabel = employer === 'all' ? 'All Employers' : `Employer: ${employer === 'Primeserve' ? 'PS' : 'OP'} (${employer})`;
-  const searchLabel = search ? `   |   Search: "${search}"` : '';
-  const periodStr = weeksList.length === 1
-    ? weeksList[0][1].label
-    : `${weeksList[0][1].label.split('–')[0].trim()} ${weeksList[0][1].label.includes('–') ? '–' : '-'} ${weeksList[weeksList.length - 1][1].label.split('–')[1].trim()}`;
-  const now = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  const generatedStr = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())}, ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-
-  const totalCols = 3 + weeksList.length * 8 + 3;
-  const aoa = [];
-  aoa.push(['OLYMPIC PAINTS — WEEKLY HOURS REPORT']);
-  aoa.push([`Period: ${periodStr}   |   Weeks: ${weeksList.length}   |   Filters: ${employerLabel}${searchLabel}   |   Generated: ${generatedStr}`]);
-  aoa.push(['Hours are NET of 45 min/day break.   Weeks run Wed–Tue.   Decimal hours (8.75 = 8h 45m).   Employers: OP = Olympic Paints, PS = Primeserve.   Overtime = hours beyond 45 ordinary hours/week (BCEA).']);
-
-  const headerTop = ['Employer', 'Employee ID', 'Name'];
-  const headerSub = [null, null, null];
-  weeksList.forEach(([, info]) => {
-    headerTop.push(info.label, null, null, null, null, null, null, null);
-    headerSub.push('Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Total');
-  });
-  headerTop.push('Period Total', 'Period OT', 'Miss YTD');
-  headerSub.push(null, null, null);
-  aoa.push(headerTop, headerSub);
-
-  perEmployee.forEach(e => {
-    const row = [e.employer === 'Primeserve' ? 'PS' : 'OP', e.id, e.name];
-    e.weeks.forEach(w => {
-      const days = [];
-      for (let i = 0; i < 7; i++) { const d = new Date(w.info.start.getTime()); d.setUTCDate(d.getUTCDate() + i); days.push(w.dayMap[dateKey(d)] ?? null); }
-      row.push(...days, w.cappedHours || 0);
-    });
-    row.push(e.periodTotal || 0, e.periodOT || null, e.missYtd || null);
-    aoa.push(row);
-  });
-
-  const totalRow = [`TOTAL  (${perEmployee.length} employees)`, null, null];
-  weeksList.forEach((_, wi) => {
-    for (let d = 0; d < 7; d++) {
-      const sum = r2(perEmployee.reduce((s, e) => s + (e.weeks[wi].dayMap[dateKey((() => { const dt = new Date(e.weeks[wi].info.start.getTime()); dt.setUTCDate(dt.getUTCDate() + d); return dt; })())] || 0), 0));
-      totalRow.push(sum);
-    }
-    totalRow.push(r2(perEmployee.reduce((s, e) => s + e.weeks[wi].cappedHours, 0)));
-  });
-  totalRow.push(r2(perEmployee.reduce((s, e) => s + e.periodTotal, 0)));
-  totalRow.push(r2(perEmployee.reduce((s, e) => s + e.periodOT, 0)) || null);
-  totalRow.push(perEmployee.reduce((s, e) => s + e.missYtd, 0) || null);
-  aoa.push(totalRow);
-
-  return { aoa, weeksCount: weeksList.length, totalCols, dataRowCount: perEmployee.length, employerAbbrev: employer === 'all' ? 'All' : (employer === 'Primeserve' ? 'PS' : 'OP') };
+function colLetter(idx) { // 1-indexed column number -> Excel column letters
+  let s = '';
+  while (idx > 0) { const m = (idx - 1) % 26; s = String.fromCharCode(65 + m) + s; idx = Math.floor((idx - 1) / 26); }
+  return s;
 }
 
-function exportWeeklyHoursWorkbook(weeksList, employer, search) {
-  if (typeof XLSX === 'undefined') { showToast('The Excel library failed to load — check your internet connection, then reload the page.', true); return; }
+async function exportWeeklyHoursWorkbook(weeksList, employer, search) {
+  if (typeof ExcelJS === 'undefined') { showToast('The formatted-Excel library failed to load — check your internet connection, then reload the page.', true); return; }
   if (!weeksList.length) { showToast('No weeks to export for this filter.', true); return; }
 
-  const { aoa, weeksCount, totalCols, dataRowCount, employerAbbrev } = buildWeeklyHoursAOA(weeksList, employer, search);
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  try {
+    const wk = weeklySummary(state.records);
+    let roster = wk.employees;
+    if (employer !== 'all') roster = roster.filter(e => e.employer === employer);
+    if (search) roster = roster.filter(e => (`${e.firstName} ${e.lastName} ${e.id}`).toLowerCase().includes(search));
 
-  const lastCol = totalCols - 1;
-  const totalRowIdx = 4 + dataRowCount; // 0-indexed: rows 0-2 text, 3-4 header, 5..(5+n-1) data
-  const merges = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } },
-    { s: { r: 2, c: 0 }, e: { r: 2, c: lastCol } },
-    { s: { r: 3, c: 0 }, e: { r: 4, c: 0 } },
-    { s: { r: 3, c: 1 }, e: { r: 4, c: 1 } },
-    { s: { r: 3, c: 2 }, e: { r: 4, c: 2 } },
-    { s: { r: 3, c: lastCol - 2 }, e: { r: 4, c: lastCol - 2 } },
-    { s: { r: 3, c: lastCol - 1 }, e: { r: 4, c: lastCol - 1 } },
-    { s: { r: 3, c: lastCol }, e: { r: 4, c: lastCol } },
-    { s: { r: totalRowIdx, c: 0 }, e: { r: totalRowIdx, c: 2 } },
-  ];
-  for (let w = 0; w < weeksCount; w++) {
-    const start = 3 + w * 8;
-    merges.push({ s: { r: 3, c: start }, e: { r: 3, c: start + 7 } });
+    const missYtdById = new Map();
+    missingLog(state.records).forEach(m => missYtdById.set(m.id, (missYtdById.get(m.id) || 0) + 1));
+
+    const perEmployee = roster.map(e => {
+      const weeks = weeksList.map(([, info]) => {
+        const dayMap = {};
+        state.records.forEach(r => {
+          if (r.id !== e.id || r.netMin == null) return;
+          const weekEnd = new Date(info.start.getTime()); weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+          if (r.dateObj < info.start || r.dateObj > weekEnd) return;
+          const dayIdx = Math.round((r.dateObj - info.start) / 86400000);
+          dayMap[dayIdx] = toDecimalHours(r.netMin);
+        });
+        return dayMap;
+      });
+      return { employer: e.employer, id: e.id, name: `${e.firstName} ${e.lastName}`.trim(), weeks, missYtd: missYtdById.get(e.id) || 0 };
+    });
+
+    const C = WEEKLY_XLSX_COLORS;
+    const thinBorder = { style: 'thin', color: { argb: C.border } };
+    const allBorders = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
+    const centerAlign = { horizontal: 'center', vertical: 'middle' };
+
+    const workbook = new ExcelJS.Workbook();
+    const totalCols = 3 + weeksList.length * 8 + 3;
+    const ws = workbook.addWorksheet('Weekly Hours', { views: [{ state: 'frozen', xSplit: 3, ySplit: 5, showGridLines: false }] });
+
+    ws.getColumn(1).width = 10; ws.getColumn(2).width = 14; ws.getColumn(3).width = 28;
+    let colCursor = 4;
+    weeksList.forEach(() => { for (let i = 0; i < 8; i++) { ws.getColumn(colCursor).width = 7; colCursor++; } });
+    ws.getColumn(colCursor).width = 13; ws.getColumn(colCursor + 1).width = 11; ws.getColumn(colCursor + 2).width = 10;
+
+    // ---- Row 1: title ----
+    ws.mergeCells(1, 1, 1, totalCols);
+    const titleCell = ws.getCell(1, 1);
+    titleCell.value = 'OLYMPIC PAINTS — WEEKLY HOURS REPORT';
+    titleCell.font = { name: 'Calibri', bold: true, size: 18, color: { argb: C.white } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.navy } };
+    titleCell.alignment = centerAlign;
+    ws.getRow(1).height = 32.1;
+
+    // ---- Row 2: subtitle ----
+    const employerLabel = employer === 'all' ? 'All Employers' : `Employer: ${employer === 'Primeserve' ? 'PS' : 'OP'} (${employer})`;
+    const searchLabel = search ? `   |   Search: "${search}"` : '';
+    const periodStr = weeksList.length === 1 ? weeksList[0][1].label
+      : `${weeksList[0][1].label.split('–')[0].trim()} – ${weeksList[weeksList.length - 1][1].label.split('–')[1].trim()}`;
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const generatedStr = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())}, ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    ws.mergeCells(2, 1, 2, totalCols);
+    const subCell = ws.getCell(2, 1);
+    subCell.value = `Period: ${periodStr}   |   Weeks: ${weeksList.length}   |   Filters: ${employerLabel}${searchLabel}   |   Generated: ${generatedStr}`;
+    subCell.font = { name: 'Calibri', size: 10, color: { argb: C.darkText } };
+    subCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.gold } };
+    subCell.alignment = centerAlign;
+    ws.getRow(2).height = 21.95;
+
+    // ---- Row 3: notes ----
+    ws.mergeCells(3, 1, 3, totalCols);
+    const notesCell = ws.getCell(3, 1);
+    notesCell.value = 'Hours are NET of 45 min/day break.   Weeks run Wed–Tue.   Decimal hours (8.75 = 8h 45m).   Employers: OP = Olympic Paints, PS = Primeserve.   Overtime = hours beyond 45 ordinary hours/week (BCEA).';
+    notesCell.font = { name: 'Calibri', size: 9, color: { argb: C.grayText } };
+    notesCell.alignment = centerAlign;
+    ws.getRow(3).height = 18;
+
+    // ---- Rows 4-5: two-row header ----
+    ws.getRow(4).height = 24; ws.getRow(5).height = 20.1;
+    function headerCell(r, c, text, bg, color, size, wrap) {
+      const cell = ws.getCell(r, c);
+      cell.value = text;
+      cell.font = { name: 'Calibri', bold: true, size: size || 10, color: { argb: color } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: !!wrap };
+      cell.border = allBorders;
+      return cell;
+    }
+    ws.mergeCells(4, 1, 5, 1); headerCell(4, 1, 'Employer', C.blue, C.white);
+    ws.mergeCells(4, 2, 5, 2); headerCell(4, 2, 'Employee ID', C.blue, C.white);
+    ws.mergeCells(4, 3, 5, 3); headerCell(4, 3, 'Name', C.blue, C.white);
+
+    const dayNames = ['Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue'];
+    const weekColStart = [];
+    colCursor = 4;
+    weeksList.forEach(([, info]) => {
+      weekColStart.push(colCursor);
+      ws.mergeCells(4, colCursor, 4, colCursor + 7);
+      headerCell(4, colCursor, info.label, C.navy, C.white, 11, true);
+      for (let d = 0; d < 7; d++) headerCell(5, colCursor + d, dayNames[d], C.blue, C.white);
+      headerCell(5, colCursor + 7, 'Total', C.navy, C.gold);
+      colCursor += 8;
+    });
+    const periodTotalCol = colCursor, periodOTCol = colCursor + 1, missYtdCol = colCursor + 2;
+    ws.mergeCells(4, periodTotalCol, 5, periodTotalCol); headerCell(4, periodTotalCol, 'Period Total', C.navyDark, C.gold, 11);
+    ws.mergeCells(4, periodOTCol, 5, periodOTCol); headerCell(4, periodOTCol, 'Period OT', C.otHeaderBg, C.white, 11);
+    ws.mergeCells(4, missYtdCol, 5, missYtdCol); headerCell(4, missYtdCol, 'Miss YTD', C.missHeaderBg, C.white, 11);
+
+    // ---- Data rows ----
+    const firstDataRow = 6;
+    perEmployee.forEach((e, idx) => {
+      const r = firstDataRow + idx;
+      const zebra = idx % 2 === 1;
+      ws.getRow(r).height = 18;
+
+      const badgeBg = e.employer === 'Primeserve' ? C.psBadgeBg : C.opBadgeBg;
+      const badgeText = e.employer === 'Primeserve' ? C.psBadgeText : C.opBadgeText;
+      const empCell = ws.getCell(r, 1);
+      empCell.value = e.employer === 'Primeserve' ? 'PS' : 'OP';
+      empCell.font = { bold: true, color: { argb: badgeText }, name: 'Calibri', size: 11 };
+      empCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: badgeBg } };
+      empCell.alignment = centerAlign; empCell.border = allBorders;
+
+      const idCell = ws.getCell(r, 2);
+      idCell.value = e.id;
+      idCell.font = { color: { argb: C.grayText }, name: 'Calibri', size: 10 };
+      idCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra ? C.zebra : C.white } };
+      idCell.alignment = centerAlign; idCell.border = allBorders;
+
+      const nameCell = ws.getCell(r, 3);
+      nameCell.value = e.name;
+      nameCell.font = { bold: true, color: { argb: C.darkText }, name: 'Calibri', size: 11 };
+      nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra ? C.zebra : C.white } };
+      nameCell.alignment = { horizontal: 'left', vertical: 'middle' }; nameCell.border = allBorders;
+
+      e.weeks.forEach((dayMap, wi) => {
+        const start = weekColStart[wi];
+        for (let d = 0; d < 7; d++) {
+          const c = ws.getCell(r, start + d);
+          c.value = dayMap[d] != null ? dayMap[d] : null;
+          c.numFmt = '0.00';
+          c.font = { name: 'Calibri', size: 10, color: { argb: C.darkText } };
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra ? C.zebra : C.white } };
+          c.alignment = centerAlign; c.border = allBorders;
+        }
+        const totalCell = ws.getCell(r, start + 7);
+        const rangeStart = colLetter(start) + r, rangeEnd = colLetter(start + 6) + r;
+        totalCell.value = { formula: `IF(SUM(${rangeStart}:${rangeEnd})=0,"",MIN(SUM(${rangeStart}:${rangeEnd}),45))` };
+        totalCell.numFmt = '0.00';
+        totalCell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: C.navy } };
+        totalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightBlue } };
+        totalCell.alignment = centerAlign; totalCell.border = allBorders;
+      });
+
+      const dayRanges = weekColStart.map(start => `SUM(${colLetter(start)}${r}:${colLetter(start + 6)}${r})`);
+      const periodTotalCell = ws.getCell(r, periodTotalCol);
+      periodTotalCell.value = { formula: dayRanges.join('+') };
+      periodTotalCell.numFmt = '0.00';
+      periodTotalCell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: C.gold } };
+      periodTotalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.navyDark } };
+      periodTotalCell.alignment = centerAlign; periodTotalCell.border = allBorders;
+
+      const otTerms = weekColStart.map(start => `MAX(0,SUM(${colLetter(start)}${r}:${colLetter(start + 6)}${r})-45)`);
+      const otExpr = otTerms.join('+');
+      const otCell = ws.getCell(r, periodOTCol);
+      otCell.value = { formula: `IF((${otExpr})>0,${otExpr},"")` };
+      otCell.numFmt = '0.00';
+      otCell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: C.otText } };
+      otCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.otBg } };
+      otCell.alignment = centerAlign; otCell.border = allBorders;
+
+      const missCell = ws.getCell(r, missYtdCol);
+      missCell.value = e.missYtd;
+      missCell.numFmt = '0';
+      const isGood = e.missYtd === 0;
+      missCell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: isGood ? C.missGoodText : C.missWarnText } };
+      missCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isGood ? C.missGoodBg : C.missWarnBg } };
+      missCell.alignment = centerAlign; missCell.border = allBorders;
+    });
+
+    // ---- TOTAL row ----
+    const totalRowIdx = firstDataRow + perEmployee.length;
+    ws.getRow(totalRowIdx).height = 20;
+    ws.mergeCells(totalRowIdx, 1, totalRowIdx, 3);
+    const totalLabelCell = ws.getCell(totalRowIdx, 1);
+    totalLabelCell.value = `TOTAL  (${perEmployee.length} employees)`;
+    totalLabelCell.font = { bold: true, size: 12, color: { argb: C.white }, name: 'Calibri' };
+    totalLabelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.navy } };
+    totalLabelCell.alignment = { horizontal: 'right', vertical: 'middle' };
+    totalLabelCell.border = allBorders;
+
+    weekColStart.forEach(start => {
+      for (let d = 0; d < 7; d++) {
+        const col = start + d, letter = colLetter(col);
+        const cell = ws.getCell(totalRowIdx, col);
+        cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})` };
+        cell.numFmt = '0.00';
+        cell.font = { bold: true, size: 10, color: { argb: C.white }, name: 'Calibri' };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.navy } };
+        cell.alignment = centerAlign; cell.border = allBorders;
+      }
+      const totCol = start + 7, letter = colLetter(totCol);
+      const cell = ws.getCell(totalRowIdx, totCol);
+      cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})` };
+      cell.numFmt = '0.00';
+      cell.font = { bold: true, size: 10, color: { argb: C.white }, name: 'Calibri' };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.navy } };
+      cell.alignment = centerAlign; cell.border = allBorders;
+    });
+    [[periodTotalCol, C.navyDark, '0.00'], [periodOTCol, C.navy, '0.00'], [missYtdCol, C.missHeaderBg, '0']].forEach(([col, bg, fmt]) => {
+      const letter = colLetter(col);
+      const cell = ws.getCell(totalRowIdx, col);
+      cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})` };
+      cell.numFmt = fmt;
+      cell.font = { bold: true, size: 10, color: { argb: C.white }, name: 'Calibri' };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+      cell.alignment = centerAlign; cell.border = allBorders;
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dateStamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    const employerAbbrev = employer === 'all' ? 'All' : (employer === 'Primeserve' ? 'PS' : 'OP');
+    a.href = url; a.download = `Olympic_Paints_Weekly_Hours_${employerAbbrev}_${dateStamp}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Weekly Hours report exported.');
+  } catch (err) {
+    console.error('Weekly Hours export failed:', err);
+    showToast('Export failed — see console for details.', true);
   }
-  ws['!merges'] = merges;
-
-  const cols = [{ wch: 10 }, { wch: 14 }, { wch: 28 }];
-  for (let w = 0; w < weeksCount; w++) for (let d = 0; d < 8; d++) cols.push({ wch: 7 });
-  cols.push({ wch: 13 }, { wch: 11 }, { wch: 10 });
-  ws['!cols'] = cols;
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Weekly Hours');
-  const now = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  const dateStamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  XLSX.writeFile(wb, `Olympic_Paints_Weekly_Hours_${employerAbbrev}_${dateStamp}.xlsx`);
-  showToast('Weekly Hours report exported.');
 }
+
 
 /* --------------------------------- wiring --------------------------------- */
 
