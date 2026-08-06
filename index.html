@@ -1338,7 +1338,7 @@ function renderWeeklySummaryTable(weeks, employees, range) {
 
   const fixedCols = [
     { key: 'employer', label: 'Employer', render: r => employerBadge(r.employer), sortVal: r => r.employer },
-    { key: 'id', label: 'Employee ID', sortVal: r => r.id },
+    { key: 'id', label: 'Employee ID', render: r => r.id, sortVal: r => r.id },
     { key: 'name', label: 'Name', render: r => `${r.firstName} ${r.lastName}`.trim(), sortVal: r => `${r.firstName} ${r.lastName}` },
   ];
 
@@ -1378,7 +1378,7 @@ function renderWeeklySummaryTable(weeks, employees, range) {
     const tr = el('tr');
     fixedCols.forEach(c => {
       const td = el('td');
-      const content = c.render(r);
+      const content = c.render ? c.render(r) : (r[c.key] ?? '');
       if (content instanceof Node) td.appendChild(content); else td.textContent = content;
       tr.appendChild(td);
     });
