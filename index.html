@@ -426,8 +426,8 @@ footer.note{ margin-top:26px; font-size:11.5px; color:var(--text-faint); text-al
 
     <!-- WEEKLY HOURS -->
     <div class="tab-panel" id="panel-weekly">
-      <div class="howto"><b>Weekly Hours</b> — Per-employee hours in Wed–Tue weeks. Use the week chips to isolate
-        recent weeks. Export to Excel for payroll.
+      <div class="howto"><b>Weekly Hours</b> — Per-employee hours in Wed–Tue weeks. Pick a week below (or click any
+        week column) to see its daily breakdown. Export to Excel for payroll.
         <br><span style="color:var(--text-faint);">Hours are NET (45 min break deducted per day). Weeks run Wed–Tue. Values in decimal hours (e.g. 8.75 = 8h 45m).</span>
       </div>
       <div class="filter-bar">
@@ -439,7 +439,13 @@ footer.note{ margin-top:26px; font-size:11.5px; color:var(--text-faint); text-al
         <div class="field"><label>Employer</label>
           <select id="weeklyEmployer"><option value="all">All Employers</option><option value="Olympic Paints">Olympic Paints</option><option value="Primeserve">Primeserve</option></select>
         </div>
+        <div class="field"><label>Department</label>
+          <select id="weeklyDepartment"><option value="all">All Departments</option></select>
+        </div>
         <div class="field"><label>Search</label><input type="text" id="weeklySearch" placeholder="Name or ID…"></div>
+        <div class="field"><label>Week</label>
+          <select id="weeklyWeekPicker"><option value="">— Summary (all weeks) —</option></select>
+        </div>
         <div class="spacer"></div>
         <button class="btn" id="weeklyExportBtn">⬇ Export to Excel</button>
       </div>
@@ -460,6 +466,9 @@ footer.note{ margin-top:26px; font-size:11.5px; color:var(--text-faint); text-al
         <div class="field"><label>Employer</label>
           <select id="missingEmployer"><option value="all">All Employers</option><option value="Olympic Paints">Olympic Paints</option><option value="Primeserve">Primeserve</option></select>
         </div>
+        <div class="field"><label>Department</label>
+          <select id="missingDepartment"><option value="all">All Departments</option></select>
+        </div>
         <div class="field"><label>Search</label><input type="text" id="missingSearch" placeholder="Name, ID or department…"></div>
         <div class="spacer"></div>
         <button class="btn" id="missingExportBtn">⬇ Export</button>
@@ -479,6 +488,9 @@ footer.note{ margin-top:26px; font-size:11.5px; color:var(--text-faint); text-al
         <button class="btn" id="monthlyResetBtn">Reset 25–25</button>
         <div class="field"><label>Employer</label>
           <select id="monthlyEmployer"><option value="all">All Employers</option><option value="Olympic Paints">OP — Olympic Paints</option><option value="Primeserve">PS — Primeserve</option></select>
+        </div>
+        <div class="field"><label>Department</label>
+          <select id="monthlyDepartment"><option value="all">All Departments</option></select>
         </div>
         <div class="spacer"></div>
         <button class="btn" id="monthlyExportBtn">⬇ Export</button>
@@ -639,6 +651,27 @@ function weekLabel(d) {
 
 function employerFromId(id) {
   return String(id || '').trim().toUpperCase().startsWith('SD') ? 'Primeserve' : 'Olympic Paints';
+}
+
+// Distinct department names present in the data, optionally scoped to one employer.
+// Sorted with "All Departments" implied separately by the caller.
+function distinctDepartments(employer) {
+  const set = new Set();
+  state.records.forEach(r => {
+    if (employer && employer !== 'all' && r.employer !== employer) return;
+    set.add(r.department || 'Unassigned');
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+// Repopulates a <select>'s department options for the given employer scope,
+// preserving the current selection if it's still valid for that scope.
+function populateDepartmentSelect(selectEl, employer) {
+  const depts = distinctDepartments(employer);
+  const prev = selectEl.value;
+  selectEl.innerHTML = '<option value="all">All Departments</option>' +
+    depts.map(d => `<option value="${d.replace(/"/g, '&quot;')}">${d}</option>`).join('');
+  selectEl.value = depts.includes(prev) ? prev : 'all';
 }
 
 function snapIn(mins) { return mins <= RULES.SNAP_IN_MAX ? RULES.SNAP_IN_TO : mins; }
@@ -952,9 +985,10 @@ function weeklySummary(records) {
 
     const empKey = r.id;
     if (!byEmployee.has(empKey)) {
-      byEmployee.set(empKey, { employer: r.employer, id: r.id, firstName: r.firstName, lastName: r.lastName, weeks: {}, months: {}, total: 0 });
+      byEmployee.set(empKey, { employer: r.employer, id: r.id, firstName: r.firstName, lastName: r.lastName, department: r.department, weeks: {}, months: {}, total: 0 });
     }
     const e = byEmployee.get(empKey);
+    e.department = r.department; // records are chronological, so this ends up as the most recent department
     e.weeks[wk] = (e.weeks[wk] || 0) + r.netMin;
     e.months[mk] = (e.months[mk] || 0) + r.netMin;
     e.total += r.netMin;
@@ -1301,33 +1335,44 @@ function getWeeklyFilters() {
   const rangeBtn = document.querySelector('#weeklyRangeChips .chip.active');
   const range = rangeBtn ? rangeBtn.dataset.range : 'all';
   const employer = document.getElementById('weeklyEmployer').value;
+  const department = document.getElementById('weeklyDepartment').value;
   const search = document.getElementById('weeklySearch').value.trim().toLowerCase();
-  return { range, employer, search };
+  return { range, employer, department, search };
 }
 
 function renderWeekly() {
   const wk = weeklySummary(state.records);
-  const { range, employer, search } = getWeeklyFilters();
+  const { range, employer, department, search } = getWeeklyFilters();
+
+  populateDepartmentSelect(document.getElementById('weeklyDepartment'), employer);
+  const departmentResolved = document.getElementById('weeklyDepartment').value; // may have been reset if invalid for this employer
 
   let weeks = wk.weekOrder;
   if (range !== 'all') weeks = weeks.slice(-parseInt(range, 10));
 
   let employees = wk.employees;
   if (employer !== 'all') employees = employees.filter(e => e.employer === employer);
+  if (departmentResolved !== 'all') employees = employees.filter(e => e.department === departmentResolved);
   if (search) employees = employees.filter(e => (`${e.firstName} ${e.lastName} ${e.id}`).toLowerCase().includes(search));
+
+  // Keep the week picker's option list in sync with the currently visible weeks.
+  const picker = document.getElementById('weeklyWeekPicker');
+  picker.innerHTML = '<option value="">— Summary (all weeks) —</option>' +
+    weeks.map(([key, v]) => `<option value="${key}">${v.label}</option>`).join('');
 
   // If a week is drilled into, make sure it's still in the visible range —
   // otherwise (e.g. the range chip changed) fall back to the summary view.
   if (state.weeklyDrillWeek && !weeks.some(([key]) => key === state.weeklyDrillWeek)) {
     state.weeklyDrillWeek = null;
   }
+  picker.value = state.weeklyDrillWeek || '';
 
   if (state.weeklyDrillWeek) {
     const entry = weeks.find(([key]) => key === state.weeklyDrillWeek);
-    renderWeeklyDailyTable(entry, employer, search);
+    renderWeeklyDailyTable(entry, employer, departmentResolved, search);
   } else {
     document.getElementById('weeklyCount').textContent =
-      `${employees.length} employee(s) · ${weeks.length} week(s) shown · click a week to see the daily breakdown`;
+      `${employees.length} employee(s) · ${weeks.length} week(s) shown · click a week (or use the Week picker) to see the daily breakdown`;
     renderWeeklySummaryTable(weeks, employees, range);
   }
 }
@@ -1407,14 +1452,24 @@ function renderWeeklySummaryTable(weeks, employees, range) {
 }
 
 // Per-employee, per-day hours for one specific week (the drill-down view).
-function dailyBreakdownForWeek(weekStart, employer, search) {
+// department is matched against each employee's most-recent department (the
+// same definition renderWeeklySummaryTable uses), so switching between the
+// summary and drill-down views for the same filter shows the same roster.
+function dailyBreakdownForWeek(weekStart, employer, department, search) {
   const weekEnd = new Date(weekStart.getTime());
   weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+
+  let departmentById = null;
+  if (department && department !== 'all') {
+    departmentById = new Map();
+    weeklySummary(state.records).employees.forEach(e => departmentById.set(e.id, e.department));
+  }
 
   const byEmployee = new Map();
   state.records.forEach(r => {
     if (r.dateObj < weekStart || r.dateObj > weekEnd) return;
     if (employer !== 'all' && r.employer !== employer) return;
+    if (departmentById && departmentById.get(r.id) !== department) return;
     if (search) {
       const hay = (`${r.firstName} ${r.lastName} ${r.id}`).toLowerCase();
       if (!hay.includes(search)) return;
@@ -1429,7 +1484,7 @@ function dailyBreakdownForWeek(weekStart, employer, search) {
   return Array.from(byEmployee.values()).sort((a, b) => a.employer.localeCompare(b.employer) || a.firstName.localeCompare(b.firstName));
 }
 
-function renderWeeklyDailyTable(weekEntry, employer, search) {
+function renderWeeklyDailyTable(weekEntry, employer, department, search) {
   const [weekKeyStr, weekInfo] = weekEntry;
   const days = [];
   for (let i = 0; i < 7; i++) {
@@ -1437,7 +1492,7 @@ function renderWeeklyDailyTable(weekEntry, employer, search) {
     d.setUTCDate(d.getUTCDate() + i);
     days.push(d);
   }
-  const employees = dailyBreakdownForWeek(weekInfo.start, employer, search);
+  const employees = dailyBreakdownForWeek(weekInfo.start, employer, department, search);
 
   document.getElementById('weeklyCount').innerHTML = '';
   const backBtn = el('button', { class: 'btn' }, ['← Back to all weeks']);
@@ -1477,9 +1532,12 @@ function renderWeeklyDailyTable(weekEntry, employer, search) {
 
 function renderMissing() {
   const employer = document.getElementById('missingEmployer').value;
+  populateDepartmentSelect(document.getElementById('missingDepartment'), employer);
+  const department = document.getElementById('missingDepartment').value;
   const search = document.getElementById('missingSearch').value.trim().toLowerCase();
   let log = missingLog(state.records);
   if (employer !== 'all') log = log.filter(m => m.employer === employer);
+  if (department !== 'all') log = log.filter(m => m.department === department);
   if (search) log = log.filter(m => (`${m.firstName} ${m.lastName} ${m.id} ${m.department}`).toLowerCase().includes(search));
 
   const missIn = log.filter(m => m.issue === 'Missed Clock-In').length;
@@ -1534,7 +1592,10 @@ function renderMonthly() {
   const from = fromInput.value ? parseDateFlexible(fromInput.value) : null;
   const to = toInput.value ? parseDateFlexible(toInput.value) : null;
   const employer = document.getElementById('monthlyEmployer').value;
-  const recs = filterRecords({ from, to, employer });
+  populateDepartmentSelect(document.getElementById('monthlyDepartment'), employer);
+  const department = document.getElementById('monthlyDepartment').value;
+  let recs = filterRecords({ from, to, employer });
+  if (department !== 'all') recs = recs.filter(r => r.department === department);
 
   const byEmployee = new Map();
   recs.forEach(r => {
@@ -1707,7 +1768,7 @@ function colLetter(idx) { // 1-indexed column number -> Excel column letters
   return s;
 }
 
-async function exportWeeklyHoursWorkbook(weeksList, employer, search) {
+async function exportWeeklyHoursWorkbook(weeksList, employer, department, search) {
   if (typeof ExcelJS === 'undefined') { showToast('The formatted-Excel library failed to load — check your internet connection, then reload the page.', true); return; }
   if (!weeksList.length) { showToast('No weeks to export for this filter.', true); return; }
 
@@ -1715,6 +1776,7 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, search) {
     const wk = weeklySummary(state.records);
     let roster = wk.employees;
     if (employer !== 'all') roster = roster.filter(e => e.employer === employer);
+    if (department && department !== 'all') roster = roster.filter(e => e.department === department);
     if (search) roster = roster.filter(e => (`${e.firstName} ${e.lastName} ${e.id}`).toLowerCase().includes(search));
 
     const missYtdById = new Map();
@@ -1760,6 +1822,7 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, search) {
 
     // ---- Row 2: subtitle ----
     const employerLabel = employer === 'all' ? 'All Employers' : `Employer: ${employer === 'Primeserve' ? 'PS' : 'OP'} (${employer})`;
+    const departmentLabel = (department && department !== 'all') ? `   |   Department: ${department}` : '';
     const searchLabel = search ? `   |   Search: "${search}"` : '';
     const periodStr = weeksList.length === 1 ? weeksList[0][1].label
       : `${weeksList[0][1].label.split('–')[0].trim()} – ${weeksList[weeksList.length - 1][1].label.split('–')[1].trim()}`;
@@ -1768,7 +1831,7 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, search) {
     const generatedStr = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())}, ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     ws.mergeCells(2, 1, 2, totalCols);
     const subCell = ws.getCell(2, 1);
-    subCell.value = `Period: ${periodStr}   |   Weeks: ${weeksList.length}   |   Filters: ${employerLabel}${searchLabel}   |   Generated: ${generatedStr}`;
+    subCell.value = `Period: ${periodStr}   |   Weeks: ${weeksList.length}   |   Filters: ${employerLabel}${departmentLabel}${searchLabel}   |   Generated: ${generatedStr}`;
     subCell.font = { name: 'Calibri', size: 10, color: { argb: C.darkText } };
     subCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.gold } };
     subCell.alignment = centerAlign;
@@ -2015,34 +2078,44 @@ function init() {
     document.querySelectorAll('#weeklyRangeChips .chip').forEach(x => x.classList.remove('active'));
     b.classList.add('active'); renderWeekly();
   }));
-  ['weeklyEmployer'].forEach(id => document.getElementById(id).addEventListener('change', renderWeekly));
+  ['weeklyEmployer', 'weeklyDepartment'].forEach(id => document.getElementById(id).addEventListener('change', renderWeekly));
   document.getElementById('weeklySearch').addEventListener('input', debounce(renderWeekly, 200));
+  document.getElementById('weeklyWeekPicker').addEventListener('change', (e) => {
+    state.weeklyDrillWeek = e.target.value || null;
+    renderWeekly();
+  });
   document.getElementById('weeklyExportBtn').addEventListener('click', () => {
-    const { range, employer, search } = getWeeklyFilters();
+    const { range, employer, department, search } = getWeeklyFilters();
     const wk = weeklySummary(state.records);
     if (state.weeklyDrillWeek) {
       const entry = wk.weekOrder.find(([key]) => key === state.weeklyDrillWeek);
       if (!entry) return;
-      exportWeeklyHoursWorkbook([entry], employer, search);
+      exportWeeklyHoursWorkbook([entry], employer, department, search);
       return;
     }
     let weeks = wk.weekOrder;
     if (range !== 'all') weeks = weeks.slice(-parseInt(range, 10));
-    exportWeeklyHoursWorkbook(weeks, employer, search);
+    exportWeeklyHoursWorkbook(weeks, employer, department, search);
   });
 
   // Missing tab
-  ['missingEmployer'].forEach(id => document.getElementById(id).addEventListener('change', renderMissing));
+  ['missingEmployer', 'missingDepartment'].forEach(id => document.getElementById(id).addEventListener('change', renderMissing));
   document.getElementById('missingSearch').addEventListener('input', debounce(renderMissing, 200));
   document.getElementById('missingExportBtn').addEventListener('click', () => {
-    const log = missingLog(state.records);
+    const employer = document.getElementById('missingEmployer').value;
+    const department = document.getElementById('missingDepartment').value;
+    const search = document.getElementById('missingSearch').value.trim().toLowerCase();
+    let log = missingLog(state.records);
+    if (employer !== 'all') log = log.filter(m => m.employer === employer);
+    if (department !== 'all') log = log.filter(m => m.department === department);
+    if (search) log = log.filter(m => (`${m.firstName} ${m.lastName} ${m.id} ${m.department}`).toLowerCase().includes(search));
     exportSimple(['Date','Day','First Name','Last Name','Employee ID','Department','Employer','Miss Type','Clock Time','Total Punches'],
       log.map(m => [m.dateKey, m.weekday, m.firstName, m.lastName, m.id, m.department, m.employer, m.issue, m.punchTime, m.totalPunches]),
       'MissingClockOut', 'Missing Clock Out');
   });
 
   // Monthly tab
-  ['monthlyFrom','monthlyTo','monthlyEmployer'].forEach(id => document.getElementById(id).addEventListener('change', renderMonthly));
+  ['monthlyFrom','monthlyTo','monthlyEmployer','monthlyDepartment'].forEach(id => document.getElementById(id).addEventListener('change', renderMonthly));
   document.getElementById('monthlyResetBtn').addEventListener('click', () => {
     if (!state.records.length) return;
     const maxDate = new Date(Math.max(...state.records.map(r => r.dateObj)));
@@ -2055,7 +2128,9 @@ function init() {
     const from = document.getElementById('monthlyFrom').value ? parseDateFlexible(document.getElementById('monthlyFrom').value) : null;
     const to = document.getElementById('monthlyTo').value ? parseDateFlexible(document.getElementById('monthlyTo').value) : null;
     const employer = document.getElementById('monthlyEmployer').value;
-    const recs = filterRecords({ from, to, employer });
+    const department = document.getElementById('monthlyDepartment').value;
+    let recs = filterRecords({ from, to, employer });
+    if (department !== 'all') recs = recs.filter(r => r.department === department);
     const byEmployee = new Map();
     recs.forEach(r => {
       if (!byEmployee.has(r.id)) byEmployee.set(r.id, { id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), employer: r.employer, department: r.department, shiftDays: 0, missing: 0, netMin: 0 });
