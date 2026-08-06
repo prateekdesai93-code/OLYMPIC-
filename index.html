@@ -65,51 +65,6 @@
   --chart-ps: #7F52C8;
   --shadow: 0 8px 24px rgba(20,23,28,0.08);
 }
-[data-theme="brand"]{
-  --bg: #14100C;
-  --bg-elev: #1E1811;
-  --bg-elev-2: #271F16;
-  --border: #362C1E;
-  --border-soft: #2A2317;
-  --text: #F4EEE3;
-  --text-dim: #B8A98F;
-  --text-faint: #7A6C56;
-  --accent: #E0A458;
-  --accent-soft: rgba(224,164,88,0.14);
-  --accent-text: #14100C;
-  --warn: #E0A458;
-  --warn-soft: rgba(224,164,88,0.14);
-  --bad: #E0705A;
-  --bad-soft: rgba(224,112,90,0.14);
-  --good: #8FB86C;
-  --good-soft: rgba(143,184,108,0.14);
-  --chart-op: #E0A458;
-  --chart-ps: #8FA9B8;
-  --shadow: 0 8px 24px rgba(0,0,0,0.4);
-}
-[data-theme="navy"]{
-  --bg: #0A1220;
-  --bg-elev: #101B2D;
-  --bg-elev-2: #16233A;
-  --border: #22314A;
-  --border-soft: #192743;
-  --text: #E7EDF6;
-  --text-dim: #93A4BD;
-  --text-faint: #5C6E8A;
-  --accent: #5B9DF0;
-  --accent-soft: rgba(91,157,240,0.15);
-  --accent-text: #0A1220;
-  --warn: #E0B24F;
-  --warn-soft: rgba(224,178,79,0.14);
-  --bad: #F0725B;
-  --bad-soft: rgba(240,114,91,0.14);
-  --good: #5BC98A;
-  --good-soft: rgba(91,201,138,0.14);
-  --chart-op: #5B9DF0;
-  --chart-ps: #C77DD1;
-  --shadow: 0 8px 24px rgba(0,0,0,0.4);
-}
-
 *{box-sizing:border-box;}
 html,body{height:100%;}
 body{
@@ -316,8 +271,6 @@ footer.note{ margin-top:26px; font-size:11.5px; color:var(--text-faint); text-al
       <div class="theme-switch" id="themeSwitch">
         <button data-theme-btn="light">Light</button>
         <button data-theme-btn="dark" class="active">Dark</button>
-        <button data-theme-btn="brand">Brand</button>
-        <button data-theme-btn="navy">Navy</button>
       </div>
       <label class="btn" for="fileInput">Import Punch Data</label>
       <input type="file" id="fileInput" accept=".xlsx,.xls" multiple>
@@ -360,6 +313,10 @@ footer.note{ margin-top:26px; font-size:11.5px; color:var(--text-faint); text-al
     <div class="tab-panel active" id="panel-overview">
       <div class="howto"><b>Overview</b> — Year-to-date totals for both employers. Use the employer summary table
         to compare Olympic Paints vs Primeserve compliance.</div>
+      <div id="dataGapsAlert" class="panel" style="display:none; border-color:var(--warn); background:var(--warn-soft);">
+        <h3 style="color:var(--warn); display:flex; align-items:center; gap:7px; margin:0 0 6px;">⚠ Data Gaps Detected</h3>
+        <div id="dataGapsList" style="font-size:12.5px; color:var(--text);"></div>
+      </div>
       <div class="kpi-grid" id="overviewKpis"></div>
       <div class="chart-grid">
         <div class="chart-card"><h3>Hours by Employer</h3><div class="chart-wrap"><canvas id="chartHoursByEmployer"></canvas></div></div>
@@ -1141,9 +1098,99 @@ function updateHeaderMeta() {
     `${state.punches.length.toLocaleString()} raw punches`;
 }
 
+/* ------------------------------ data gap detection ------------------------------
+   Flags calendar dates within the imported period that have ZERO punches company-
+   wide (a near-certain sign of a missing export, like the Aug 1-4 gap that
+   prompted this), plus a softer flag for dates with suspiciously low activity
+   compared to that weekday's usual pattern (e.g. a Wednesday with 5 people when
+   Wednesdays normally see 80+) — catches partial exports, not just missing ones.
+   Weekends/normal quiet days are not flagged unless they're anomalous for their
+   own weekday, so this doesn't cry wolf on ordinary Saturday/Sunday skeleton crews.
+   ---------------------------------------------------------------------------- */
+function findDataGaps() {
+  if (!state.records.length) return { fullGaps: [], lowDays: [] };
+
+  const dates = state.records.map(r => r.dateObj);
+  const minDate = new Date(Math.min(...dates));
+  const maxDate = new Date(Math.max(...dates));
+  const daysWithData = new Set(state.records.map(r => r.dateKey));
+
+  const fullGapDates = [];
+  const cursor = new Date(minDate.getTime());
+  while (cursor <= maxDate) {
+    if (!daysWithData.has(dateKey(cursor))) fullGapDates.push(new Date(cursor.getTime()));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  const fullGaps = [];
+  let rangeStart = null, prev = null;
+  fullGapDates.forEach(d => {
+    if (rangeStart === null) { rangeStart = d; prev = d; return; }
+    if (Math.round((d - prev) / 86400000) === 1) { prev = d; return; }
+    fullGaps.push({ start: rangeStart, end: prev });
+    rangeStart = d; prev = d;
+  });
+  if (rangeStart !== null) fullGaps.push({ start: rangeStart, end: prev });
+
+  // A gap spanning only Saturday/Sunday is normal (the business doesn't run full
+  // weekend shifts every week) — only flag ranges that include at least one
+  // weekday, since a weekday with zero company-wide punches is the real signal.
+  function includesWeekday(start, end) {
+    const cur = new Date(start.getTime());
+    while (cur <= end) {
+      const dow = cur.getUTCDay();
+      if (dow !== 0 && dow !== 6) return true;
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+    return false;
+  }
+  const significantGaps = fullGaps.filter(g => includesWeekday(g.start, g.end));
+
+  const dailyCounts = dailySummary(state.records);
+  const byWeekday = {};
+  dailyCounts.forEach(d => { (byWeekday[d.weekday] = byWeekday[d.weekday] || []).push(d.employees); });
+  const avgByWeekday = {};
+  Object.entries(byWeekday).forEach(([wd, arr]) => { avgByWeekday[wd] = arr.reduce((s, v) => s + v, 0) / arr.length; });
+
+  const lowDays = dailyCounts.filter(d => {
+    const avg = avgByWeekday[d.weekday];
+    return avg > 5 && d.employees > 0 && d.employees < avg * 0.25;
+  }).map(d => ({ date: d.dateObj, weekday: d.weekday, employees: d.employees, avgExpected: Math.round(avgByWeekday[d.weekday]) }));
+
+  return { fullGaps: significantGaps, lowDays, minDate, maxDate };
+}
+
+function renderDataGaps() {
+  const box = document.getElementById('dataGapsAlert');
+  const list = document.getElementById('dataGapsList');
+  const { fullGaps, lowDays } = findDataGaps();
+
+  if (!fullGaps.length && !lowDays.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  list.innerHTML = '';
+
+  fullGaps.forEach(g => {
+    const sameDay = dateKey(g.start) === dateKey(g.end);
+    const days = Math.round((g.end - g.start) / 86400000) + 1;
+    const label = sameDay ? dateShort(g.start) : `${dateShort(g.start)} – ${dateShort(g.end)}`;
+    list.appendChild(el('div', { style: 'margin-bottom:5px;' }, [
+      el('b', {}, [label]),
+      document.createTextNode(` — no punches recorded at all (${days} day${days > 1 ? 's' : ''}). Could be a public holiday or planned closure — or a missing export. Worth a quick check in Advius if this wasn't a day off.`),
+    ]));
+  });
+
+  if (lowDays.length) {
+    list.appendChild(el('div', { style: 'margin-top:6px; color:var(--text-dim);' }, [
+      document.createTextNode('Also unusually low activity — possibly a partial export: '),
+      document.createTextNode(lowDays.map(d => `${dateShort(d.date)} (${d.employees} of ~${d.avgExpected} usual for a ${d.weekday})`).join('; ')),
+    ]));
+  }
+}
+
 /* -------------------------------- OVERVIEW -------------------------------- */
 
 function renderOverview() {
+  renderDataGaps();
   const meta = periodMeta();
   const emp = employerSummary(state.records);
   const opRow = emp.find(e => e.employer === 'Olympic Paints') || { employees:0, shiftDays:0, missing:0, totalMin:0 };
@@ -1792,9 +1839,12 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, department, search
           const dayIdx = Math.round((r.dateObj - info.start) / 86400000);
           dayMap[dayIdx] = toDecimalHours(r.netMin);
         });
-        return dayMap;
+        const rawHours = r2(Object.values(dayMap).reduce((s, v) => s + (v || 0), 0));
+        return { dayMap, rawHours, cappedHours: r2(Math.min(rawHours, ORDINARY_WEEK_HOURS)), otHours: r2(Math.max(0, rawHours - ORDINARY_WEEK_HOURS)) };
       });
-      return { employer: e.employer, id: e.id, name: `${e.firstName} ${e.lastName}`.trim(), weeks, missYtd: missYtdById.get(e.id) || 0 };
+      const periodTotal = r2(weeks.reduce((s, w) => s + w.rawHours, 0));
+      const periodOT = r2(weeks.reduce((s, w) => s + w.otHours, 0));
+      return { employer: e.employer, id: e.id, name: `${e.firstName} ${e.lastName}`.trim(), weeks, periodTotal, periodOT, missYtd: missYtdById.get(e.id) || 0 };
     });
 
     const C = WEEKLY_XLSX_COLORS;
@@ -1878,6 +1928,7 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, department, search
 
     // ---- Data rows ----
     const firstDataRow = 6;
+    const perEmployeeComputed = []; // collected while building data rows, reused for the TOTAL row's cached sums
     perEmployee.forEach((e, idx) => {
       const r = firstDataRow + idx;
       const zebra = idx % 2 === 1;
@@ -1905,35 +1956,43 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, department, search
 
       e.weeks.forEach((dayMap, wi) => {
         const start = weekColStart[wi];
+        let weekSum = 0;
         for (let d = 0; d < 7; d++) {
           const c = ws.getCell(r, start + d);
           c.value = dayMap[d] != null ? dayMap[d] : null;
+          if (dayMap[d] != null) weekSum += dayMap[d];
           c.numFmt = '0.00';
           c.font = { name: 'Calibri', size: 10, color: { argb: C.darkText } };
           c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra ? C.zebra : C.white } };
           c.alignment = centerAlign; c.border = allBorders;
         }
+        weekSum = r2(weekSum);
         const totalCell = ws.getCell(r, start + 7);
         const rangeStart = colLetter(start) + r, rangeEnd = colLetter(start + 6) + r;
-        totalCell.value = { formula: `IF(SUM(${rangeStart}:${rangeEnd})=0,"",MIN(SUM(${rangeStart}:${rangeEnd}),45))` };
+        // formula recalculates live in Excel; cached `result` displays correctly
+        // immediately in viewers that don't auto-recalculate (Preview, Sheets import, etc.)
+        totalCell.value = { formula: `IF(SUM(${rangeStart}:${rangeEnd})=0,"",MIN(SUM(${rangeStart}:${rangeEnd}),45))`, result: weekSum === 0 ? '' : Math.min(weekSum, ORDINARY_WEEK_HOURS) };
         totalCell.numFmt = '0.00';
         totalCell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: C.navy } };
         totalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightBlue } };
         totalCell.alignment = centerAlign; totalCell.border = allBorders;
       });
 
+      const weekRawSums = e.weeks.map(dayMap => r2(Object.values(dayMap).reduce((s, v) => s + (v != null ? v : 0), 0)));
+      const periodTotalValue = r2(weekRawSums.reduce((s, v) => s + v, 0));
       const dayRanges = weekColStart.map(start => `SUM(${colLetter(start)}${r}:${colLetter(start + 6)}${r})`);
       const periodTotalCell = ws.getCell(r, periodTotalCol);
-      periodTotalCell.value = { formula: dayRanges.join('+') };
+      periodTotalCell.value = { formula: dayRanges.join('+'), result: periodTotalValue };
       periodTotalCell.numFmt = '0.00';
       periodTotalCell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: C.gold } };
       periodTotalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.navyDark } };
       periodTotalCell.alignment = centerAlign; periodTotalCell.border = allBorders;
 
+      const otValue = r2(weekRawSums.reduce((s, v) => s + Math.max(0, v - ORDINARY_WEEK_HOURS), 0));
       const otTerms = weekColStart.map(start => `MAX(0,SUM(${colLetter(start)}${r}:${colLetter(start + 6)}${r})-45)`);
       const otExpr = otTerms.join('+');
       const otCell = ws.getCell(r, periodOTCol);
-      otCell.value = { formula: `IF((${otExpr})>0,${otExpr},"")` };
+      otCell.value = { formula: `IF((${otExpr})>0,${otExpr},"")`, result: otValue > 0 ? otValue : '' };
       otCell.numFmt = '0.00';
       otCell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: C.otText } };
       otCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.otBg } };
@@ -1946,6 +2005,8 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, department, search
       missCell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: isGood ? C.missGoodText : C.missWarnText } };
       missCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isGood ? C.missGoodBg : C.missWarnBg } };
       missCell.alignment = centerAlign; missCell.border = allBorders;
+
+      perEmployeeComputed.push({ weeks: e.weeks, weekCapped: weekRawSums.map(v => r2(Math.min(v, ORDINARY_WEEK_HOURS))), periodTotalValue, otValue, missYtd: e.missYtd });
     });
 
     // ---- TOTAL row ----
@@ -1959,28 +2020,34 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, department, search
     totalLabelCell.alignment = { horizontal: 'right', vertical: 'middle' };
     totalLabelCell.border = allBorders;
 
-    weekColStart.forEach(start => {
+    weekColStart.forEach((start, wi) => {
       for (let d = 0; d < 7; d++) {
         const col = start + d, letter = colLetter(col);
+        const daySum = r2(perEmployeeComputed.reduce((s, e) => s + (e.weeks[wi][d] != null ? e.weeks[wi][d] : 0), 0));
         const cell = ws.getCell(totalRowIdx, col);
-        cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})` };
+        cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})`, result: daySum };
         cell.numFmt = '0.00';
         cell.font = { bold: true, size: 10, color: { argb: C.white }, name: 'Calibri' };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.navy } };
         cell.alignment = centerAlign; cell.border = allBorders;
       }
       const totCol = start + 7, letter = colLetter(totCol);
+      const weekTotalSum = r2(perEmployeeComputed.reduce((s, e) => s + e.weekCapped[wi], 0));
       const cell = ws.getCell(totalRowIdx, totCol);
-      cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})` };
+      cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})`, result: weekTotalSum };
       cell.numFmt = '0.00';
       cell.font = { bold: true, size: 10, color: { argb: C.white }, name: 'Calibri' };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.navy } };
       cell.alignment = centerAlign; cell.border = allBorders;
     });
-    [[periodTotalCol, C.navyDark, '0.00'], [periodOTCol, C.navy, '0.00'], [missYtdCol, C.missHeaderBg, '0']].forEach(([col, bg, fmt]) => {
+    [
+      [periodTotalCol, C.navyDark, '0.00', r2(perEmployeeComputed.reduce((s, e) => s + e.periodTotalValue, 0))],
+      [periodOTCol, C.navy, '0.00', r2(perEmployeeComputed.reduce((s, e) => s + e.otValue, 0))],
+      [missYtdCol, C.missHeaderBg, '0', perEmployeeComputed.reduce((s, e) => s + e.missYtd, 0)],
+    ].forEach(([col, bg, fmt, result]) => {
       const letter = colLetter(col);
       const cell = ws.getCell(totalRowIdx, col);
-      cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})` };
+      cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})`, result };
       cell.numFmt = fmt;
       cell.font = { bold: true, size: 10, color: { argb: C.white }, name: 'Calibri' };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
