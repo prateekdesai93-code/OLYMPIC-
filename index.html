@@ -1954,31 +1954,28 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, department, search
       nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra ? C.zebra : C.white } };
       nameCell.alignment = { horizontal: 'left', vertical: 'middle' }; nameCell.border = allBorders;
 
-      e.weeks.forEach((dayMap, wi) => {
+      e.weeks.forEach((w, wi) => {
         const start = weekColStart[wi];
-        let weekSum = 0;
         for (let d = 0; d < 7; d++) {
           const c = ws.getCell(r, start + d);
-          c.value = dayMap[d] != null ? dayMap[d] : null;
-          if (dayMap[d] != null) weekSum += dayMap[d];
+          c.value = w.dayMap[d] != null ? w.dayMap[d] : null;
           c.numFmt = '0.00';
           c.font = { name: 'Calibri', size: 10, color: { argb: C.darkText } };
           c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: zebra ? C.zebra : C.white } };
           c.alignment = centerAlign; c.border = allBorders;
         }
-        weekSum = r2(weekSum);
         const totalCell = ws.getCell(r, start + 7);
         const rangeStart = colLetter(start) + r, rangeEnd = colLetter(start + 6) + r;
         // formula recalculates live in Excel; cached `result` displays correctly
         // immediately in viewers that don't auto-recalculate (Preview, Sheets import, etc.)
-        totalCell.value = { formula: `IF(SUM(${rangeStart}:${rangeEnd})=0,"",MIN(SUM(${rangeStart}:${rangeEnd}),45))`, result: weekSum === 0 ? '' : Math.min(weekSum, ORDINARY_WEEK_HOURS) };
+        totalCell.value = { formula: `IF(SUM(${rangeStart}:${rangeEnd})=0,"",MIN(SUM(${rangeStart}:${rangeEnd}),45))`, result: w.rawHours === 0 ? '' : w.cappedHours };
         totalCell.numFmt = '0.00';
         totalCell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: C.navy } };
         totalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightBlue } };
         totalCell.alignment = centerAlign; totalCell.border = allBorders;
       });
 
-      const weekRawSums = e.weeks.map(dayMap => r2(Object.values(dayMap).reduce((s, v) => s + (v != null ? v : 0), 0)));
+      const weekRawSums = e.weeks.map(w => w.rawHours);
       const periodTotalValue = r2(weekRawSums.reduce((s, v) => s + v, 0));
       const dayRanges = weekColStart.map(start => `SUM(${colLetter(start)}${r}:${colLetter(start + 6)}${r})`);
       const periodTotalCell = ws.getCell(r, periodTotalCol);
@@ -2023,7 +2020,7 @@ async function exportWeeklyHoursWorkbook(weeksList, employer, department, search
     weekColStart.forEach((start, wi) => {
       for (let d = 0; d < 7; d++) {
         const col = start + d, letter = colLetter(col);
-        const daySum = r2(perEmployeeComputed.reduce((s, e) => s + (e.weeks[wi][d] != null ? e.weeks[wi][d] : 0), 0));
+        const daySum = r2(perEmployeeComputed.reduce((s, e) => s + (e.weeks[wi].dayMap[d] != null ? e.weeks[wi].dayMap[d] : 0), 0));
         const cell = ws.getCell(totalRowIdx, col);
         cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${totalRowIdx - 1})`, result: daySum };
         cell.numFmt = '0.00';
