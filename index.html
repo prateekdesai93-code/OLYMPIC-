@@ -275,6 +275,9 @@ tfoot td{
 .table-toolbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:10px; flex-wrap:wrap; }
 .table-count{ font-size:12px; color:var(--text-faint); }
 .week-scroll{ overflow-x:auto; }
+.week-drill-th, .week-drill-td{ cursor:pointer; }
+.week-drill-th:hover{ color:var(--accent); }
+.week-drill-td:hover{ background:var(--accent-soft); color:var(--accent); }
 
 footer.note{ margin-top:26px; font-size:11.5px; color:var(--text-faint); text-align:center; }
 .section-title{ font-size:15px; font-weight:700; margin:24px 0 10px; }
@@ -574,6 +577,14 @@ function toDecimalHours(mins) {
   return Math.round((mins / 60) * 100) / 100;
 }
 
+// Rounds a number of hours to 2dp, avoiding binary-float artifacts like 43.489999999999995
+function r2(hours) {
+  if (hours == null || isNaN(hours)) return 0;
+  return Math.round(hours * 100) / 100;
+}
+
+const ORDINARY_WEEK_HOURS = 45; // BCEA ordinary hours per week — beyond this, hours count as overtime on exports
+
 const WEEKDAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
 // Accepts "2026/03/26", Excel date serials, or JS Date -> returns a UTC-noon Date (avoids TZ drift)
@@ -621,10 +632,8 @@ function weekLabel(d) {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const ws = weekStart(d);
   const we = new Date(ws.getTime()); we.setUTCDate(we.getUTCDate()+6);
-  const sameMonth = ws.getUTCMonth() === we.getUTCMonth();
-  return sameMonth
-    ? `${ws.getUTCDate()} ${months[ws.getUTCMonth()]}–${we.getUTCDate()} ${months[we.getUTCMonth()]}`
-    : `${ws.getUTCDate()} ${months[ws.getUTCMonth()]}–${we.getUTCDate()} ${months[we.getUTCMonth()]}`;
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(ws.getUTCDate())} ${months[ws.getUTCMonth()]}–${pad(we.getUTCDate())} ${months[we.getUTCMonth()]}`;
 }
 
 function employerFromId(id) {
@@ -642,6 +651,7 @@ const state = {
   currentTab: 'overview',
   theme: 'dark',
   charts: {},       // Chart.js instances, keyed by canvas id (destroyed/recreated on redraw)
+  weeklyDrillWeek: null, // week key currently drilled into on the Weekly Hours tab, or null for the summary view
 };
 
 function showToast(msg, isError) {
@@ -1286,12 +1296,17 @@ function renderDepartments() {
 
 /* -------------------------------- WEEKLY HOURS -------------------------------- */
 
-function renderWeekly() {
-  const wk = weeklySummary(state.records);
+function getWeeklyFilters() {
   const rangeBtn = document.querySelector('#weeklyRangeChips .chip.active');
   const range = rangeBtn ? rangeBtn.dataset.range : 'all';
   const employer = document.getElementById('weeklyEmployer').value;
   const search = document.getElementById('weeklySearch').value.trim().toLowerCase();
+  return { range, employer, search };
+}
+
+function renderWeekly() {
+  const wk = weeklySummary(state.records);
+  const { range, employer, search } = getWeeklyFilters();
 
   let weeks = wk.weekOrder;
   if (range !== 'all') weeks = weeks.slice(-parseInt(range, 10));
@@ -1300,21 +1315,162 @@ function renderWeekly() {
   if (employer !== 'all') employees = employees.filter(e => e.employer === employer);
   if (search) employees = employees.filter(e => (`${e.firstName} ${e.lastName} ${e.id}`).toLowerCase().includes(search));
 
-  document.getElementById('weeklyCount').textContent = `${employees.length} employee(s) · ${weeks.length} week(s) shown`;
+  // If a week is drilled into, make sure it's still in the visible range —
+  // otherwise (e.g. the range chip changed) fall back to the summary view.
+  if (state.weeklyDrillWeek && !weeks.some(([key]) => key === state.weeklyDrillWeek)) {
+    state.weeklyDrillWeek = null;
+  }
+
+  if (state.weeklyDrillWeek) {
+    const entry = weeks.find(([key]) => key === state.weeklyDrillWeek);
+    renderWeeklyDailyTable(entry, employer, search);
+  } else {
+    document.getElementById('weeklyCount').textContent =
+      `${employees.length} employee(s) · ${weeks.length} week(s) shown · click a week to see the daily breakdown`;
+    renderWeeklySummaryTable(weeks, employees, range);
+  }
+}
+
+function renderWeeklySummaryTable(weeks, employees, range) {
+  const tableEl = document.getElementById('tblWeekly');
+  tableEl.innerHTML = '';
+
+  const fixedCols = [
+    { key: 'employer', label: 'Employer', render: r => employerBadge(r.employer), sortVal: r => r.employer },
+    { key: 'id', label: 'Employee ID', sortVal: r => r.id },
+    { key: 'name', label: 'Name', render: r => `${r.firstName} ${r.lastName}`.trim(), sortVal: r => `${r.firstName} ${r.lastName}` },
+  ];
+
+  const thead = el('thead'), trh = el('tr');
+  fixedCols.forEach((c, i) => {
+    const th = el('th', {}, [c.label]);
+    th.addEventListener('click', () => {
+      const dir = tableEl._sortKey === c.key && tableEl._sortDir === 1 ? -1 : 1;
+      tableEl._sortKey = c.key; tableEl._sortDir = dir;
+      employees.sort((a, b) => String(c.sortVal(a)).localeCompare(String(c.sortVal(b))) * dir);
+      renderWeeklySummaryTable(weeks, employees, range);
+    });
+    trh.appendChild(th);
+  });
+  weeks.forEach(([key, v]) => {
+    const th = el('th', { class: 'num week-drill-th', title: 'Click to see the daily breakdown for this week' }, [v.label + ' ▸']);
+    th.addEventListener('click', () => { state.weeklyDrillWeek = key; renderWeekly(); });
+    trh.appendChild(th);
+  });
+  const totalTh = el('th', { class: 'num' }, ['Grand Total']);
+  totalTh.addEventListener('click', () => {
+    const dir = tableEl._sortKey === 'total' && tableEl._sortDir === 1 ? -1 : 1;
+    tableEl._sortKey = 'total'; tableEl._sortDir = dir;
+    employees.sort((a, b) => (a.total - b.total) * dir);
+    renderWeeklySummaryTable(weeks, employees, range);
+  });
+  trh.appendChild(totalTh);
+  thead.appendChild(trh); tableEl.appendChild(thead);
+
+  const tbody = el('tbody');
+  if (!employees.length) {
+    const tr = el('tr'); const td = el('td', { colspan: String(fixedCols.length + weeks.length + 1) }, ['No records for this filter.']);
+    td.style.textAlign = 'center'; td.style.color = 'var(--text-faint)'; td.style.padding = '28px 12px';
+    tr.appendChild(td); tbody.appendChild(tr);
+  }
+  employees.forEach(r => {
+    const tr = el('tr');
+    fixedCols.forEach(c => {
+      const td = el('td');
+      const content = c.render(r);
+      if (content instanceof Node) td.appendChild(content); else td.textContent = content;
+      tr.appendChild(td);
+    });
+    weeks.forEach(([key]) => {
+      const td = el('td', { class: 'num tabular week-drill-td' });
+      td.textContent = r.weeks[key] ? toDecimalHours(r.weeks[key]).toFixed(2) : '';
+      td.addEventListener('click', () => { state.weeklyDrillWeek = key; renderWeekly(); });
+      tr.appendChild(td);
+    });
+    const shown = weeks.reduce((s, [key]) => s + (r.weeks[key] || 0), 0);
+    const totalTd = el('td', { class: 'num tabular' }, [toDecimalHours(weeks.length === 0 ? r.total : shown).toFixed(2)]);
+    tr.appendChild(totalTd);
+    tbody.appendChild(tr);
+  });
+  tableEl.appendChild(tbody);
+
+  const tfoot = el('tfoot'); const tr = el('tr');
+  fixedCols.forEach((c, i) => tr.appendChild(el('td', {}, [i === fixedCols.length - 1 ? 'TOTAL' : ''])));
+  weeks.forEach(([key]) => {
+    const sum = employees.reduce((s, r) => s + (r.weeks[key] || 0), 0);
+    tr.appendChild(el('td', { class: 'num tabular' }, [toDecimalHours(sum).toFixed(2)]));
+  });
+  const grand = employees.reduce((s, r) => s + weeks.reduce((ss, [key]) => ss + (r.weeks[key] || 0), 0), 0);
+  tr.appendChild(el('td', { class: 'num tabular' }, [toDecimalHours(grand).toFixed(2)]));
+  tfoot.appendChild(tr); tableEl.appendChild(tfoot);
+}
+
+// Per-employee, per-day hours for one specific week (the drill-down view).
+function dailyBreakdownForWeek(weekStart, employer, search) {
+  const weekEnd = new Date(weekStart.getTime());
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+
+  const byEmployee = new Map();
+  state.records.forEach(r => {
+    if (r.dateObj < weekStart || r.dateObj > weekEnd) return;
+    if (employer !== 'all' && r.employer !== employer) return;
+    if (search) {
+      const hay = (`${r.firstName} ${r.lastName} ${r.id}`).toLowerCase();
+      if (!hay.includes(search)) return;
+    }
+    if (!byEmployee.has(r.id)) {
+      byEmployee.set(r.id, { employer: r.employer, id: r.id, firstName: r.firstName, lastName: r.lastName, days: {}, total: 0 });
+    }
+    const e = byEmployee.get(r.id);
+    e.days[r.dateKey] = { netMin: r.netMin, missType: r.missType };
+    if (r.netMin != null) e.total += r.netMin;
+  });
+  return Array.from(byEmployee.values()).sort((a, b) => a.employer.localeCompare(b.employer) || a.firstName.localeCompare(b.firstName));
+}
+
+function renderWeeklyDailyTable(weekEntry, employer, search) {
+  const [weekKeyStr, weekInfo] = weekEntry;
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekInfo.start.getTime());
+    d.setUTCDate(d.getUTCDate() + i);
+    days.push(d);
+  }
+  const employees = dailyBreakdownForWeek(weekInfo.start, employer, search);
+
+  document.getElementById('weeklyCount').innerHTML = '';
+  const backBtn = el('button', { class: 'btn' }, ['← Back to all weeks']);
+  backBtn.addEventListener('click', () => { state.weeklyDrillWeek = null; renderWeekly(); });
+  const label = el('span', { style: 'margin-left:10px; color:var(--text-dim); font-size:12px;' },
+    [`Week of ${weekInfo.label} · ${employees.length} employee(s)`]);
+  document.getElementById('weeklyCount').appendChild(backBtn);
+  document.getElementById('weeklyCount').appendChild(label);
+
+  const tableEl = document.getElementById('tblWeekly');
+  const dayCol = d => ({
+    label: WEEKDAY_NAMES[d.getUTCDay()].slice(0, 3) + ' ' + d.getUTCDate() + '/' + (d.getUTCMonth() + 1),
+    render: r => {
+      const rec = r.days[dateKey(d)];
+      if (!rec) return el('span', { class: 'dim' }, ['–']);
+      if (rec.netMin == null) {
+        return el('span', { class: 'badge ' + (rec.missType === 'in' ? 'miss-in' : 'miss-out') }, ['Missed']);
+      }
+      return document.createTextNode(toDecimalHours(rec.netMin).toFixed(2));
+    },
+  });
 
   const columns = [
     { key: 'employer', label: 'Employer', render: r => employerBadge(r.employer) },
     { key: 'id', label: 'Employee ID' },
-    { key: 'name', label: 'Name', render: r => el('span', { class: 'name-cell' }, [`${r.firstName} ${r.lastName}`.trim()]) },
+    { key: 'name', label: 'Name', render: r => `${r.firstName} ${r.lastName}`.trim() },
+    ...days.map(d => ({ key: 'd_' + dateKey(d), label: dayCol(d).label, num: true, render: dayCol(d).render })),
+    { key: 'total', label: 'Week Total', num: true, render: r => toDecimalHours(r.total).toFixed(2),
+      footer: rows => toDecimalHours(rows.reduce((s, r) => s + r.total, 0)).toFixed(2) },
   ];
-  weeks.forEach(([key, v]) => columns.push({ key: 'w_' + key, label: v.label, num: true, render: r => r.weeks[key] ? toDecimalHours(r.weeks[key]).toFixed(2) : '' }));
-  columns.push({ key: 'total', label: 'Grand Total', num: true, render: r => {
-    const shown = weeks.reduce((s, [key]) => s + (r.weeks[key] || 0), 0);
-    return toDecimalHours(range === 'all' ? r.total : shown).toFixed(2);
-  }, footer: rows => toDecimalHours(rows.reduce((s, r) => s + (range === 'all' ? r.total : weeks.reduce((ss,[k]) => ss+(r.weeks[k]||0), 0)), 0)).toFixed(2) });
 
-  renderTable(document.getElementById('tblWeekly'), columns, employees, { footer: true });
+  renderTable(tableEl, columns, employees, { footer: true });
 }
+
 
 /* ----------------------------- MISSING CLOCK OUT ----------------------------- */
 
@@ -1522,6 +1678,139 @@ function exportSimple(headerRow, rows, filenameSuffix, sheetTitle) {
   showToast('Export ready.');
 }
 
+/* -------------------- Weekly Hours export (payroll format) --------------------
+   Matches the house format: title/subtitle/notes rows, a two-row header with one
+   merged block per week (Wed–Tue + a capped weekly Total), a Period Total /
+   Period OT (BCEA: hours beyond 45/week) summary, a Miss YTD column (missing
+   clock-in/out count across the full dataset, independent of the exported
+   period), and a TOTAL row. Used for both the single-week drill-down export and
+   the multi-week summary export, so every Weekly Hours download looks the same.
+   -------------------------------------------------------------------------- */
+function buildWeeklyHoursAOA(weeksList, employer, search) {
+  const wk = weeklySummary(state.records);
+  let roster = wk.employees;
+  if (employer !== 'all') roster = roster.filter(e => e.employer === employer);
+  if (search) roster = roster.filter(e => (`${e.firstName} ${e.lastName} ${e.id}`).toLowerCase().includes(search));
+
+  // Full-history missing-punch count per employee, independent of the exported period.
+  const missYtdById = new Map();
+  missingLog(state.records).forEach(m => missYtdById.set(m.id, (missYtdById.get(m.id) || 0) + 1));
+
+  // Per-employee, per-week day/raw/capped/OT figures.
+  const perEmployee = roster.map(e => {
+    const weeks = weeksList.map(([weekKey, info]) => {
+      const dayMap = {};
+      let rawHours = 0;
+      state.records.forEach(r => {
+        if (r.id !== e.id || r.netMin == null) return;
+        if (r.dateObj < info.start) return;
+        const weekEnd = new Date(info.start.getTime()); weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+        if (r.dateObj > weekEnd) return;
+        dayMap[dateKey(r.dateObj)] = toDecimalHours(r.netMin);
+        rawHours += toDecimalHours(r.netMin);
+      });
+      rawHours = r2(rawHours);
+      return { weekKey, info, dayMap, rawHours, cappedHours: r2(Math.min(rawHours, ORDINARY_WEEK_HOURS)), otHours: r2(Math.max(0, rawHours - ORDINARY_WEEK_HOURS)) };
+    });
+    const periodTotal = r2(weeks.reduce((s, w) => s + w.rawHours, 0));
+    const periodOT = r2(weeks.reduce((s, w) => s + w.otHours, 0));
+    return { employer: e.employer, id: e.id, name: `${e.firstName} ${e.lastName}`.trim(), weeks, periodTotal, periodOT, missYtd: missYtdById.get(e.id) || 0 };
+  });
+
+  // ---- Header text ----
+  const employerLabel = employer === 'all' ? 'All Employers' : `Employer: ${employer === 'Primeserve' ? 'PS' : 'OP'} (${employer})`;
+  const searchLabel = search ? `   |   Search: "${search}"` : '';
+  const periodStr = weeksList.length === 1
+    ? weeksList[0][1].label
+    : `${weeksList[0][1].label.split('–')[0].trim()} ${weeksList[0][1].label.includes('–') ? '–' : '-'} ${weeksList[weeksList.length - 1][1].label.split('–')[1].trim()}`;
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const generatedStr = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())}, ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+  const totalCols = 3 + weeksList.length * 8 + 3;
+  const aoa = [];
+  aoa.push(['OLYMPIC PAINTS — WEEKLY HOURS REPORT']);
+  aoa.push([`Period: ${periodStr}   |   Weeks: ${weeksList.length}   |   Filters: ${employerLabel}${searchLabel}   |   Generated: ${generatedStr}`]);
+  aoa.push(['Hours are NET of 45 min/day break.   Weeks run Wed–Tue.   Decimal hours (8.75 = 8h 45m).   Employers: OP = Olympic Paints, PS = Primeserve.   Overtime = hours beyond 45 ordinary hours/week (BCEA).']);
+
+  const headerTop = ['Employer', 'Employee ID', 'Name'];
+  const headerSub = [null, null, null];
+  weeksList.forEach(([, info]) => {
+    headerTop.push(info.label, null, null, null, null, null, null, null);
+    headerSub.push('Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Total');
+  });
+  headerTop.push('Period Total', 'Period OT', 'Miss YTD');
+  headerSub.push(null, null, null);
+  aoa.push(headerTop, headerSub);
+
+  perEmployee.forEach(e => {
+    const row = [e.employer === 'Primeserve' ? 'PS' : 'OP', e.id, e.name];
+    e.weeks.forEach(w => {
+      const days = [];
+      for (let i = 0; i < 7; i++) { const d = new Date(w.info.start.getTime()); d.setUTCDate(d.getUTCDate() + i); days.push(w.dayMap[dateKey(d)] ?? null); }
+      row.push(...days, w.cappedHours || 0);
+    });
+    row.push(e.periodTotal || 0, e.periodOT || null, e.missYtd || null);
+    aoa.push(row);
+  });
+
+  const totalRow = [`TOTAL  (${perEmployee.length} employees)`, null, null];
+  weeksList.forEach((_, wi) => {
+    for (let d = 0; d < 7; d++) {
+      const sum = r2(perEmployee.reduce((s, e) => s + (e.weeks[wi].dayMap[dateKey((() => { const dt = new Date(e.weeks[wi].info.start.getTime()); dt.setUTCDate(dt.getUTCDate() + d); return dt; })())] || 0), 0));
+      totalRow.push(sum);
+    }
+    totalRow.push(r2(perEmployee.reduce((s, e) => s + e.weeks[wi].cappedHours, 0)));
+  });
+  totalRow.push(r2(perEmployee.reduce((s, e) => s + e.periodTotal, 0)));
+  totalRow.push(r2(perEmployee.reduce((s, e) => s + e.periodOT, 0)) || null);
+  totalRow.push(perEmployee.reduce((s, e) => s + e.missYtd, 0) || null);
+  aoa.push(totalRow);
+
+  return { aoa, weeksCount: weeksList.length, totalCols, dataRowCount: perEmployee.length, employerAbbrev: employer === 'all' ? 'All' : (employer === 'Primeserve' ? 'PS' : 'OP') };
+}
+
+function exportWeeklyHoursWorkbook(weeksList, employer, search) {
+  if (typeof XLSX === 'undefined') { showToast('The Excel library failed to load — check your internet connection, then reload the page.', true); return; }
+  if (!weeksList.length) { showToast('No weeks to export for this filter.', true); return; }
+
+  const { aoa, weeksCount, totalCols, dataRowCount, employerAbbrev } = buildWeeklyHoursAOA(weeksList, employer, search);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  const lastCol = totalCols - 1;
+  const totalRowIdx = 4 + dataRowCount; // 0-indexed: rows 0-2 text, 3-4 header, 5..(5+n-1) data
+  const merges = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: lastCol } },
+    { s: { r: 3, c: 0 }, e: { r: 4, c: 0 } },
+    { s: { r: 3, c: 1 }, e: { r: 4, c: 1 } },
+    { s: { r: 3, c: 2 }, e: { r: 4, c: 2 } },
+    { s: { r: 3, c: lastCol - 2 }, e: { r: 4, c: lastCol - 2 } },
+    { s: { r: 3, c: lastCol - 1 }, e: { r: 4, c: lastCol - 1 } },
+    { s: { r: 3, c: lastCol }, e: { r: 4, c: lastCol } },
+    { s: { r: totalRowIdx, c: 0 }, e: { r: totalRowIdx, c: 2 } },
+  ];
+  for (let w = 0; w < weeksCount; w++) {
+    const start = 3 + w * 8;
+    merges.push({ s: { r: 3, c: start }, e: { r: 3, c: start + 7 } });
+  }
+  ws['!merges'] = merges;
+
+  const cols = [{ wch: 10 }, { wch: 14 }, { wch: 28 }];
+  for (let w = 0; w < weeksCount; w++) for (let d = 0; d < 8; d++) cols.push({ wch: 7 });
+  cols.push({ wch: 13 }, { wch: 11 }, { wch: 10 });
+  ws['!cols'] = cols;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Weekly Hours');
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const dateStamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  XLSX.writeFile(wb, `Olympic_Paints_Weekly_Hours_${employerAbbrev}_${dateStamp}.xlsx`);
+  showToast('Weekly Hours report exported.');
+}
+
 /* --------------------------------- wiring --------------------------------- */
 
 function switchTab(tab) {
@@ -1599,10 +1888,17 @@ function init() {
   ['weeklyEmployer'].forEach(id => document.getElementById(id).addEventListener('change', renderWeekly));
   document.getElementById('weeklySearch').addEventListener('input', debounce(renderWeekly, 200));
   document.getElementById('weeklyExportBtn').addEventListener('click', () => {
+    const { range, employer, search } = getWeeklyFilters();
     const wk = weeklySummary(state.records);
-    const header = ['Employer','Employee ID','First Name','Last Name', ...wk.weekOrder.map(([,v])=>v.label), 'Grand Total'];
-    const rows = wk.employees.map(e => [e.employer, e.id, e.firstName, e.lastName, ...wk.weekOrder.map(([k]) => e.weeks[k]?toDecimalHours(e.weeks[k]):''), toDecimalHours(e.total)]);
-    exportSimple(header, rows, 'WeeklyHours', 'Weekly Summary');
+    if (state.weeklyDrillWeek) {
+      const entry = wk.weekOrder.find(([key]) => key === state.weeklyDrillWeek);
+      if (!entry) return;
+      exportWeeklyHoursWorkbook([entry], employer, search);
+      return;
+    }
+    let weeks = wk.weekOrder;
+    if (range !== 'all') weeks = weeks.slice(-parseInt(range, 10));
+    exportWeeklyHoursWorkbook(weeks, employer, search);
   });
 
   // Missing tab
