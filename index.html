@@ -491,6 +491,11 @@ footer.note{ margin-top:26px; font-size:11.5px; color:var(--text-faint); text-al
 
 <div class="toast" id="toast"></div>
 
+<!-- Populated by gen_dashboard.py for the published (GitHub Pages) build so the
+     dashboard opens pre-loaded. Left as null in the source file — importing
+     punch data manually works exactly the same either way. -->
+<script type="application/json" id="embeddedData">null</script>
+
 <script>
 /* ==========================================================================
    Clocking Report — Olympic Paints
@@ -789,24 +794,25 @@ function dedupePunches() {
    reference workbook's "Clocking Report" sheet.
    -------------------------------------------------------------------------- */
 function rebuildRecords() {
-  const groups = new Map(); // key: id|dateKey -> {punches:[], meta}
+  const groups = new Map(); // key: id|dateKey -> {id, dateKey, dateObj, employer, punches:[{minutes,firstName,lastName,department}]}
   for (const p of state.punches) {
     const key = p.id + '|' + p.dateKey;
     if (!groups.has(key)) {
-      groups.set(key, { id: p.id, dateKey: p.dateKey, dateObj: p.dateObj, employer: p.employer, times: [], firstName: p.firstName, lastName: p.lastName, department: p.department });
+      groups.set(key, { id: p.id, dateKey: p.dateKey, dateObj: p.dateObj, employer: p.employer, punches: [] });
     }
-    const g = groups.get(key);
-    g.times.push(p.minutes);
-    // Prefer the most complete name/department seen for this employee/day
-    if (p.firstName) g.firstName = p.firstName;
-    if (p.lastName) g.lastName = p.lastName;
-    if (p.department) g.department = p.department;
+    groups.get(key).punches.push({ minutes: p.minutes, firstName: p.firstName, lastName: p.lastName, department: p.department });
   }
 
   const records = [];
   for (const g of groups.values()) {
-    const times = g.times.slice().sort((a, b) => a - b);
+    // Sort the day's punches by time — this determines clock-in/out AND which
+    // punch's name/department apply. A day can have conflicting department
+    // tags across punches (an employee transferred departments mid-shift-cycle);
+    // the clock-in punch's tag is the one that counts, matching payroll practice.
+    const sorted = g.punches.slice().sort((a, b) => a.minutes - b.minutes);
+    const times = sorted.map(p => p.minutes);
     const totalPunches = times.length;
+    const first = sorted[0], last = sorted[sorted.length - 1];
     let clockIn = null, clockOut = null, missType = null;
 
     if (totalPunches === 1) {
@@ -831,10 +837,10 @@ function rebuildRecords() {
       dateKey: g.dateKey,
       dateObj: g.dateObj,
       weekday: WEEKDAY_NAMES[g.dateObj.getUTCDay()],
-      firstName: g.firstName,
-      lastName: g.lastName,
+      firstName: first.firstName || last.firstName,
+      lastName: first.lastName || last.lastName,
       id: g.id,
-      department: g.department || 'Unassigned',
+      department: first.department || last.department || 'Unassigned',
       employer: g.employer,
       clockIn, clockOut, grossMin, breakMin, netMin,
       totalPunches, missType,
@@ -1533,6 +1539,27 @@ function applyTheme(theme) {
   if (state.records.length) requestAnimationFrame(() => RENDERERS[state.currentTab] && RENDERERS[state.currentTab]());
 }
 
+function loadEmbeddedData() {
+  const tag = document.getElementById('embeddedData');
+  if (!tag) return;
+  let payload;
+  try { payload = JSON.parse(tag.textContent); } catch (e) { return; }
+  if (!payload || !Array.isArray(payload.punches) || !payload.punches.length) return;
+
+  state.punches = payload.punches.map(p => {
+    const dateObj = parseDateFlexible(p.d);
+    return { id: p.id, firstName: p.f || '', lastName: p.l || '', department: p.dept || 'Unassigned',
+      employer: employerFromId(p.id), dateKey: dateKey(dateObj), dateObj, minutes: p.m };
+  }).filter(p => p.dateObj && p.minutes != null);
+
+  dedupePunches();
+  rebuildRecords();
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('exportWorkbookBtn').disabled = false;
+  renderAll();
+}
+
 function init() {
   document.getElementById('fileInput').addEventListener('change', (e) => { handleFiles(e.target.files); e.target.value = ''; });
 
@@ -1616,7 +1643,7 @@ function init() {
 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => { init(); loadEmbeddedData(); });
 </script>
 
 
