@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Clocking">
+<meta name="theme-color" content="#0B0D10">
+<title>Clocking Report — Olympic Paints</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js\'><\/script>')"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js" onerror="this.onerror=null;document.write('<script src=\'https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js\'><\/script>')"></script>
+<style>
+:root{
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  --font-num: "SF Mono", ui-monospace, "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+}
+/* ---------- THEME: DARK (default) ---------- */
+:root, [data-theme="dark"]{
+  --bg: #0B0D10;
+  --bg-elev: #14171C;
+  --bg-elev-2: #1B1F26;
+  --border: #262B33;
+  --border-soft: #1D2127;
+  --text: #EDEFF2;
+  --text-dim: #9BA3AE;
+  --text-faint: #626B78;
+  --accent: #4FD1C5;
+  --accent-soft: rgba(79,209,197,0.14);
+  --accent-text: #0B0D10;
+  --warn: #F5A623;
+  --warn-soft: rgba(245,166,35,0.14);
+  --bad: #EF5B5B;
+  --bad-soft: rgba(239,91,91,0.14);
+  --good: #52C97B;
+  --good-soft: rgba(82,201,123,0.14);
+  --chart-op: #4FD1C5;
+  --chart-ps: #B694E8;
+  --shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+[data-theme="light"]{
+  --bg: #F5F6F8;
+  --bg-elev: #FFFFFF;
+  --bg-elev-2: #F0F1F4;
+  --border: #E1E4E9;
+  --border-soft: #EBEDF0;
+  --text: #14171C;
+  --text-dim: #565E6B;
+  --text-faint: #8B93A0;
+  --accent: #0E9488;
+  --accent-soft: rgba(14,148,136,0.10);
+  --accent-text: #FFFFFF;
+  --warn: #B8710A;
+  --warn-soft: rgba(184,113,10,0.10);
+  --bad: #C7362F;
+  --bad-soft: rgba(199,54,47,0.09);
+  --good: #22883F;
+  --good-soft: rgba(34,136,63,0.10);
+  --chart-op: #0E9488;
+  --chart-ps: #7F52C8;
+  --shadow: 0 8px 24px rgba(20,23,28,0.08);
+}
+[data-theme="brand"]{
+  --bg: #14100C;
+  --bg-elev: #1E1811;
+  --bg-elev-2: #271F16;
+  --border: #362C1E;
+  --border-soft: #2A2317;
+  --text: #F4EEE3;
+  --text-dim: #B8A98F;
+  --text-faint: #7A6C56;
+  --accent: #E0A458;
+  --accent-soft: rgba(224,164,88,0.14);
+  --accent-text: #14100C;
+  --warn: #E0A458;
+  --warn-soft: rgba(224,164,88,0.14);
+  --bad: #E0705A;
+  --bad-soft: rgba(224,112,90,0.14);
+  --good: #8FB86C;
+  --good-soft: rgba(143,184,108,0.14);
+  --chart-op: #E0A458;
+  --chart-ps: #8FA9B8;
+  --shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+[data-theme="navy"]{
+  --bg: #0A1220;
+  --bg-elev: #101B2D;
+  --bg-elev-2: #16233A;
+  --border: #22314A;
+  --border-soft: #192743;
+  --text: #E7EDF6;
+  --text-dim: #93A4BD;
+  --text-faint: #5C6E8A;
+  --accent: #5B9DF0;
+  --accent-soft: rgba(91,157,240,0.15);
+  --accent-text: #0A1220;
+  --warn: #E0B24F;
+  --warn-soft: rgba(224,178,79,0.14);
+  --bad: #F0725B;
+  --bad-soft: rgba(240,114,91,0.14);
+  --good: #5BC98A;
+  --good-soft: rgba(91,201,138,0.14);
+  --chart-op: #5B9DF0;
+  --chart-ps: #C77DD1;
+  --shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:var(--font-ui); font-size:14px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+button, input, select{ font-family:inherit; font-size:inherit; color:inherit; }
+::selection{ background:var(--accent-soft); }
+a{color:var(--accent);}
+
+.tabular{ font-variant-numeric: tabular-nums; font-feature-settings:"tnum" 1; }
+.mono{ font-family:var(--font-num); }
+
+/* ---------- Layout shell ---------- */
+.app{ max-width:1360px; margin:0 auto; padding:20px 20px 64px; }
+.topbar{
+  display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+  flex-wrap:wrap; margin-bottom:18px;
+}
+.brand-block{ display:flex; gap:12px; align-items:center; }
+.brand-mark{
+  width:38px; height:38px; border-radius:10px; flex:none;
+  background:linear-gradient(135deg, var(--accent), var(--chart-ps));
+  display:flex; align-items:center; justify-content:center;
+  font-weight:800; color:var(--accent-text); font-size:15px;
+}
+.brand-title{ font-size:18px; font-weight:700; letter-spacing:-0.01em; }
+.brand-sub{ font-size:12.5px; color:var(--text-dim); margin-top:2px; }
+.brand-sub b{ color:var(--text); font-weight:600; }
+
+.topbar-actions{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.theme-switch{
+  display:flex; gap:2px; padding:3px; background:var(--bg-elev); border:1px solid var(--border);
+  border-radius:999px;
+}
+.theme-switch button{
+  border:none; background:transparent; color:var(--text-dim); padding:6px 12px;
+  border-radius:999px; cursor:pointer; font-size:12.5px; font-weight:600;
+  transition:background .15s,color .15s;
+}
+.theme-switch button.active{ background:var(--accent); color:var(--accent-text); }
+
+.btn{
+  display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border);
+  background:var(--bg-elev); color:var(--text); padding:8px 13px; border-radius:var(--radius-sm);
+  cursor:pointer; font-size:12.5px; font-weight:600; transition:border-color .15s, background .15s;
+  white-space:nowrap;
+}
+.btn:hover{ border-color:var(--accent); }
+.btn.primary{ background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+.btn.primary:hover{ filter:brightness(1.06); }
+.btn:disabled{ opacity:.45; cursor:not-allowed; }
+.btn svg{ width:14px; height:14px; }
+
+input[type="file"]{ display:none; }
+
+/* ---------- Empty state ---------- */
+.empty-state{
+  margin-top:60px; padding:52px 28px; text-align:center; border:1px dashed var(--border);
+  border-radius:var(--radius); background:var(--bg-elev);
+}
+.empty-state h2{ font-size:19px; margin:0 0 8px; }
+.empty-state p{ color:var(--text-dim); max-width:520px; margin:0 auto 22px; font-size:13.5px; }
+.empty-actions{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+.empty-rules{
+  margin:28px auto 0; max-width:640px; text-align:left; font-size:12px; color:var(--text-faint);
+  border-top:1px solid var(--border-soft); padding-top:18px;
+}
+.empty-rules code{ background:var(--bg-elev-2); padding:1px 5px; border-radius:4px; }
+
+/* ---------- Tabs ---------- */
+.tabs{
+  display:flex; gap:4px; overflow-x:auto; border-bottom:1px solid var(--border);
+  margin-bottom:20px; padding-bottom:0;
+}
+.tab-btn{
+  border:none; background:transparent; color:var(--text-dim); padding:10px 14px;
+  font-size:13px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent;
+  white-space:nowrap; transition:color .15s, border-color .15s;
+}
+.tab-btn:hover{ color:var(--text); }
+.tab-btn.active{ color:var(--text); border-bottom-color:var(--accent); }
+.tab-panel{ display:none; }
+.tab-panel.active{ display:block; animation:fadeIn .18s ease; }
+@keyframes fadeIn{ from{opacity:0; transform:translateY(2px);} to{opacity:1; transform:none;} }
+
+.howto{
+  background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius);
+  padding:14px 16px; margin-bottom:18px; font-size:12.5px; color:var(--text-dim);
+}
+.howto b{ color:var(--text); }
+
+/* ---------- Cards / KPIs ---------- */
+.kpi-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:12px; margin-bottom:18px; }
+.kpi{
+  background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius);
+  padding:14px 16px;
+}
+.kpi .label{ font-size:11.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.04em; font-weight:700; }
+.kpi .value{ font-size:24px; font-weight:700; margin-top:6px; letter-spacing:-0.01em; }
+.kpi .sub{ font-size:11.5px; color:var(--text-dim); margin-top:4px; }
+.kpi.accent .value{ color:var(--accent); }
+.kpi.warn .value{ color:var(--warn); }
+.kpi.bad .value{ color:var(--bad); }
+.kpi.good .value{ color:var(--good); }
+
+.chart-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(320px,1fr)); gap:14px; margin-bottom:18px; }
+.chart-card{
+  background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius);
+  padding:16px; min-height:280px; display:flex; flex-direction:column;
+}
+.chart-card h3{ margin:0 0 12px; font-size:13px; font-weight:700; color:var(--text); }
+.chart-card .chart-wrap{ position:relative; flex:1; min-height:220px; }
+.chart-card.tall{ min-height:340px; }
+.chart-card.tall .chart-wrap{ min-height:280px; }
+
+/* ---------- Panels / filter bar ---------- */
+.panel{ background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; }
+.panel h3{ margin:0 0 4px; font-size:14px; font-weight:700; }
+.panel .hint{ font-size:12px; color:var(--text-faint); margin-bottom:12px; }
+
+.filter-bar{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:16px; }
+.field{ display:flex; flex-direction:column; gap:5px; }
+.field label{ font-size:11px; color:var(--text-faint); font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
+.field select, .field input[type="date"], .field input[type="text"]{
+  background:var(--bg-elev-2); border:1px solid var(--border); color:var(--text);
+  padding:7px 10px; border-radius:var(--radius-sm); min-width:120px; outline:none;
+}
+.field select:focus, .field input:focus{ border-color:var(--accent); }
+.chip-row{ display:flex; gap:6px; flex-wrap:wrap; }
+.chip{
+  border:1px solid var(--border); background:var(--bg-elev-2); color:var(--text-dim);
+  padding:6px 12px; border-radius:999px; font-size:12px; font-weight:600; cursor:pointer;
+}
+.chip.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+.spacer{ flex:1; }
+
+/* ---------- Tables ---------- */
+.table-scroll{ overflow:auto; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-elev); }
+table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+thead th{
+  position:sticky; top:0; background:var(--bg-elev-2); text-align:left; padding:9px 12px;
+  font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-faint);
+  border-bottom:1px solid var(--border); white-space:nowrap; cursor:pointer; user-select:none;
+  font-weight:700; z-index:1;
+}
+thead th:hover{ color:var(--text); }
+thead th.num, td.num{ text-align:right; }
+tbody td{ padding:8px 12px; border-bottom:1px solid var(--border-soft); white-space:nowrap; }
+tbody tr:hover{ background:var(--bg-elev-2); }
+tbody tr:last-child td{ border-bottom:none; }
+tfoot td{
+  padding:9px 12px; font-weight:700; background:var(--bg-elev-2); border-top:1px solid var(--border);
+  position:sticky; bottom:0;
+}
+.badge{ padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; display:inline-block; }
+.badge.op{ background:var(--accent-soft); color:var(--accent); }
+.badge.ps{ background:rgba(183,148,232,.16); color:var(--chart-ps); }
+.badge.miss-in{ background:var(--bad-soft); color:var(--bad); }
+.badge.miss-out{ background:var(--warn-soft); color:var(--warn); }
+.badge.ok{ background:var(--good-soft); color:var(--good); }
+.name-cell{ font-weight:600; }
+.dim{ color:var(--text-faint); }
+.table-toolbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:10px; flex-wrap:wrap; }
+.table-count{ font-size:12px; color:var(--text-faint); }
+.week-scroll{ overflow-x:auto; }
+
+footer.note{ margin-top:26px; font-size:11.5px; color:var(--text-faint); text-align:center; }
+.section-title{ font-size:15px; font-weight:700; margin:24px 0 10px; }
+.two-col{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media(max-width:760px){
+  .two-col{ grid-template-columns:1fr; }
+  .app{ padding:14px 12px 48px; }
+  thead th, tbody td{ padding:7px 9px; }
+}
+.toast{
+  position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--bg-elev-2); border:1px solid var(--border); color:var(--text);
+  padding:11px 18px; border-radius:var(--radius-sm); font-size:12.5px; box-shadow:var(--shadow);
+  opacity:0; pointer-events:none; transition:all .25s ease; z-index:999; max-width:400px;
+}
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+.toast.error{ border-color:var(--bad); color:var(--bad); }
+.progress-line{ height:3px; background:var(--bg-elev-2); border-radius:2px; overflow:hidden; margin-top:10px; display:none; }
+.progress-line.show{ display:block; }
+.progress-line span{ display:block; height:100%; background:var(--accent); width:0%; transition:width .2s; }
+</style>
+</head>
+<body data-theme="dark">
+<div class="app" id="app">
+
+  <div class="topbar">
+    <div class="brand-block">
+      <div class="brand-mark">OP</div>
+      <div>
+        <div class="brand-title">Clocking Report — Olympic Paints</div>
+        <div class="brand-sub" id="headerMeta">No data loaded yet</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <div class="theme-switch" id="themeSwitch">
+        <button data-theme-btn="light">Light</button>
+        <button data-theme-btn="dark" class="active">Dark</button>
+        <button data-theme-btn="brand">Brand</button>
+        <button data-theme-btn="navy">Navy</button>
+      </div>
+      <label class="btn" for="fileInput">Import Punch Data</label>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" multiple>
+      <button class="btn primary" id="exportWorkbookBtn" disabled>⬇ Export Workbook</button>
+    </div>
+  </div>
+
+  <div class="progress-line" id="progressLine"><span id="progressBar"></span></div>
+
+  <div id="emptyState" class="empty-state">
+    <h2>Import a clocking export to begin</h2>
+    <p>Drop in a raw <code class="mono">Transaction*.xlsx</code> biometric export, or re-import a
+      previously exported <code class="mono">Clocking Report YTD.xlsx</code> to continue where you left off —
+      new files are merged with anything already loaded.</p>
+    <div class="empty-actions">
+      <label class="btn primary" for="fileInput">Choose File(s)</label>
+    </div>
+    <div class="empty-rules">
+      <div style="margin-bottom:8px;"><b>How this works</b></div>
+      <div>1. Export the transaction file from Advius biometrics (any date range). Any filename ending in <code>.xlsx</code> works.</div>
+      <div>2. Drop it in here — punches are de-duplicated and merged into whatever is already loaded.</div>
+      <div>3. Review the dashboard below, then <b>Export Workbook</b> to save a new <code>Clocking Report YTD.xlsx</code>.</div>
+      <div style="margin-top:8px;"><b>Rules applied:</b> 45-minute break deducted from every complete shift. Clock-in ≤ 07:20 is recorded as 07:15. Clock-out 16:50–17:10 is recorded as 17:00. Employee IDs starting with <code>SD</code> belong to Primeserve; all others are Olympic Paints.</div>
+    </div>
+  </div>
+
+  <div id="dashboard" style="display:none;">
+
+    <div class="tabs" id="tabs">
+      <button class="tab-btn active" data-tab="overview">Overview</button>
+      <button class="tab-btn" data-tab="yesterday">Yesterday</button>
+      <button class="tab-btn" data-tab="daily">Daily Attendance</button>
+      <button class="tab-btn" data-tab="departments">Departments</button>
+      <button class="tab-btn" data-tab="weekly">Weekly Hours</button>
+      <button class="tab-btn" data-tab="missing">Missing Clock Out</button>
+      <button class="tab-btn" data-tab="monthly">Monthly</button>
+    </div>
+
+    <!-- OVERVIEW -->
+    <div class="tab-panel active" id="panel-overview">
+      <div class="howto"><b>Overview</b> — Year-to-date totals for both employers. Use the employer summary table
+        to compare Olympic Paints vs Primeserve compliance.</div>
+      <div class="kpi-grid" id="overviewKpis"></div>
+      <div class="chart-grid">
+        <div class="chart-card"><h3>Hours by Employer</h3><div class="chart-wrap"><canvas id="chartHoursByEmployer"></canvas></div></div>
+        <div class="chart-card"><h3>Missing Clock Out by Employer</h3><div class="chart-wrap"><canvas id="chartMissByEmployer"></canvas></div></div>
+        <div class="chart-card"><h3>Avg Hours / Shift</h3><div class="chart-wrap"><canvas id="chartAvgShift"></canvas></div></div>
+        <div class="chart-card tall" style="grid-column:span 2;"><h3>Top 10 Employees by Hours Worked (YTD)</h3><div class="chart-wrap"><canvas id="chartTop10Hours"></canvas></div></div>
+      </div>
+      <div class="chart-card tall" style="margin-bottom:18px;"><h3>Weekly Hours Trend — Olympic Paints vs Primeserve</h3><div class="chart-wrap"><canvas id="chartWeeklyTrend"></canvas></div></div>
+      <div class="section-title">Employer Summary</div>
+      <div class="panel" style="padding:0; overflow:hidden;">
+        <div class="table-scroll" style="border:none; border-radius:0;">
+          <table id="tblEmployerSummary"></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- YESTERDAY -->
+    <div class="tab-panel" id="panel-yesterday">
+      <div class="howto"><b>Yesterday</b> — Who missed their clock-out (or clock-in) on the most recent working
+        day in the data. Action this list each morning.</div>
+      <div class="kpi-grid" id="yesterdayKpis"></div>
+      <div class="table-toolbar"><div class="table-count" id="yesterdayCount"></div></div>
+      <div class="table-scroll"><table id="tblYesterday"></table></div>
+    </div>
+
+    <!-- DAILY ATTENDANCE -->
+    <div class="tab-panel" id="panel-daily">
+      <div class="howto"><b>Daily Attendance</b> — Filter by date range to inspect any period. Use the chart to
+        spot dips in headcount.</div>
+      <div class="filter-bar">
+        <div class="field"><label>From</label><input type="date" id="dailyFrom"></div>
+        <div class="field"><label>To</label><input type="date" id="dailyTo"></div>
+        <div class="field"><label>Employer</label>
+          <select id="dailyEmployer"><option value="all">All Employers</option><option value="Olympic Paints">OP — Olympic Paints</option><option value="Primeserve">PS — Primeserve</option></select>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn" id="dailyExportBtn">⬇ Export to Excel</button>
+      </div>
+      <div class="chart-card tall" style="margin-bottom:16px;"><h3>Daily Employee Count &amp; Missing Clock Outs</h3><div class="chart-wrap"><canvas id="chartDaily"></canvas></div></div>
+      <div class="section-title">Daily Attendance Log</div>
+      <div class="table-toolbar"><div class="table-count" id="dailyCount"></div></div>
+      <div class="table-scroll"><table id="tblDaily"></table></div>
+    </div>
+
+    <!-- DEPARTMENTS -->
+    <div class="tab-panel" id="panel-departments">
+      <div class="howto"><b>Departments</b> — Which departments have the most missing clock-outs. Useful for
+        line-manager conversations.</div>
+      <div class="filter-bar">
+        <div class="chip-row" id="deptEmployerChips">
+          <button class="chip active" data-emp="all">All Employers</button>
+          <button class="chip" data-emp="Olympic Paints">Olympic Paints</button>
+          <button class="chip" data-emp="Primeserve">Primeserve</button>
+        </div>
+      </div>
+      <div class="two-col" style="margin-bottom:16px;">
+        <div class="chart-card"><h3>Olympic Paints — Hours by Department</h3><div class="chart-wrap"><canvas id="chartDeptHoursOP"></canvas></div></div>
+        <div class="chart-card"><h3>Primeserve — Hours by Department</h3><div class="chart-wrap"><canvas id="chartDeptHoursPS"></canvas></div></div>
+      </div>
+      <div class="section-title">Department Breakdown</div>
+      <div class="table-toolbar"><div class="table-count" id="deptCount"></div></div>
+      <div class="table-scroll"><table id="tblDept"></table></div>
+    </div>
+
+    <!-- WEEKLY HOURS -->
+    <div class="tab-panel" id="panel-weekly">
+      <div class="howto"><b>Weekly Hours</b> — Per-employee hours in Wed–Tue weeks. Use the week chips to isolate
+        recent weeks. Export to Excel for payroll.
+        <br><span style="color:var(--text-faint);">Hours are NET (45 min break deducted per day). Weeks run Wed–Tue. Values in decimal hours (e.g. 8.75 = 8h 45m).</span>
+      </div>
+      <div class="filter-bar">
+        <div class="chip-row" id="weeklyRangeChips">
+          <button class="chip" data-range="2">Last 2</button>
+          <button class="chip" data-range="4">Last 4</button>
+          <button class="chip active" data-range="all">All</button>
+        </div>
+        <div class="field"><label>Employer</label>
+          <select id="weeklyEmployer"><option value="all">All Employers</option><option value="Olympic Paints">Olympic Paints</option><option value="Primeserve">Primeserve</option></select>
+        </div>
+        <div class="field"><label>Search</label><input type="text" id="weeklySearch" placeholder="Name or ID…"></div>
+        <div class="spacer"></div>
+        <button class="btn" id="weeklyExportBtn">⬇ Export to Excel</button>
+      </div>
+      <div class="table-toolbar"><div class="table-count" id="weeklyCount"></div></div>
+      <div class="table-scroll week-scroll"><table id="tblWeekly"></table></div>
+    </div>
+
+    <!-- MISSING CLOCK OUT -->
+    <div class="tab-panel" id="panel-missing">
+      <div class="howto"><b>Missing Clock Out</b> — Full log of every missed punch. Search by name, ID, or
+        department. Top-10 repeat offenders are charted.</div>
+      <div class="kpi-grid" id="missingKpis"></div>
+      <div class="two-col" style="margin-bottom:16px;">
+        <div class="chart-card"><h3>Top 10 Employees — Missing Clock Outs</h3><div class="chart-wrap"><canvas id="chartTop10Missing"></canvas></div></div>
+        <div class="chart-card"><h3>Missing by Department (Olympic Paints)</h3><div class="chart-wrap"><canvas id="chartMissByDept"></canvas></div></div>
+      </div>
+      <div class="filter-bar">
+        <div class="field"><label>Employer</label>
+          <select id="missingEmployer"><option value="all">All Employers</option><option value="Olympic Paints">Olympic Paints</option><option value="Primeserve">Primeserve</option></select>
+        </div>
+        <div class="field"><label>Search</label><input type="text" id="missingSearch" placeholder="Name, ID or department…"></div>
+        <div class="spacer"></div>
+        <button class="btn" id="missingExportBtn">⬇ Export</button>
+      </div>
+      <div class="table-toolbar"><div class="table-count" id="missingCount"></div></div>
+      <div class="table-scroll"><table id="tblMissing"></table></div>
+    </div>
+
+    <!-- MONTHLY -->
+    <div class="tab-panel" id="panel-monthly">
+      <div class="howto"><b>Monthly</b> — Payroll-cycle view. Hours are NET of 45 min/day break. Partial months
+        are handled correctly — only days within the selected range are counted. Default period is the current
+        25–25 payroll cycle.</div>
+      <div class="filter-bar">
+        <div class="field"><label>From</label><input type="date" id="monthlyFrom"></div>
+        <div class="field"><label>To</label><input type="date" id="monthlyTo"></div>
+        <button class="btn" id="monthlyResetBtn">Reset 25–25</button>
+        <div class="field"><label>Employer</label>
+          <select id="monthlyEmployer"><option value="all">All Employers</option><option value="Olympic Paints">OP — Olympic Paints</option><option value="Primeserve">PS — Primeserve</option></select>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn" id="monthlyExportBtn">⬇ Export</button>
+      </div>
+      <div class="kpi-grid" id="monthlyKpis"></div>
+      <div class="section-title">Employees in Period</div>
+      <div class="table-toolbar"><div class="table-count" id="monthlyCount"></div></div>
+      <div class="table-scroll"><table id="tblMonthly"></table></div>
+    </div>
+
+  </div>
+
+  <footer class="note">Olympic Paints Clocking Dashboard · runs entirely in your browser — no data leaves this device · rebuilt DailyLabs</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ==========================================================================
+   Clocking Report — Olympic Paints
+   Single-file client-side dashboard: import raw biometric punch exports,
+   compute attendance/hours per the payroll rules below, render the
+   dashboard, and export a multi-sheet Excel workbook. No backend.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   PAYROLL RULES (reverse-engineered from the reference workbook)
+   - Break: a flat 45 minutes is deducted from every shift that has both a
+     clock-in and a clock-out.
+   - Snap-in: a clock-in at or before 07:20 (time-of-day) is recorded as 07:15.
+   - Snap-out: a clock-out between 16:50 and 17:10 (inclusive) is recorded as 17:00.
+   - Employer: an Employee ID starting with "SD" is Primeserve; every other
+     ID is Olympic Paints.
+   - Per employee per day: punches are sorted by time. The first punch is the
+     clock-in candidate, the last is the clock-out candidate (any punches in
+     between are ignored for hours but still counted in Total Punches).
+   - Single-punch days: ASSUMPTION — a lone punch before 15:00 is treated as a
+     clock-in only (clock-out missing); at/after 15:00 it's treated as a
+     clock-out only (clock-in missing). The source data shows missed-clock-out
+     punches topping out at 14:06 and missed-clock-in punches starting at
+     15:41, so the true cutoff sits somewhere in that gap — 15:00 is a
+     reasonable midpoint and is called out here so it can be corrected if a
+     more precise boundary is known.
+   -------------------------------------------------------------------------- */
+const RULES = {
+  SNAP_IN_MAX: 7 * 60 + 20,      // 07:20
+  SNAP_IN_TO: 7 * 60 + 15,       // 07:15
+  SNAP_OUT_MIN: 16 * 60 + 50,    // 16:50
+  SNAP_OUT_MAX: 17 * 60 + 10,    // 17:10
+  SNAP_OUT_TO: 17 * 60,          // 17:00
+  SINGLE_PUNCH_CUTOFF: 15 * 60,  // 15:00 — see assumption above
+  BREAK_MINUTES: 45,
+};
+
+/* ---------------------------- time utilities ---------------------------- */
+
+// "07:15" / "7:15" -> 435 (minutes since 00:00). Returns null if unparseable.
+function parseClockToMinutes(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'number') {
+    // Excel serial time fraction (0..1) or a JS Date-like serial
+    if (raw >= 0 && raw < 1) return Math.round(raw * 24 * 60);
+    return null;
+  }
+  const s = String(raw).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10), mi = parseInt(m[2], 10);
+  if (isNaN(h) || isNaN(mi)) return null;
+  return h * 60 + mi;
+}
+
+// minutes-of-day -> "07:15" (zero-padded hour, for clock times)
+function fmtClock(mins) {
+  if (mins == null || isNaN(mins)) return '';
+  const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+// duration-in-minutes -> "9:45" (no leading zero on hours; can exceed 24h)
+function fmtDuration(mins) {
+  if (mins == null || isNaN(mins)) return '';
+  const neg = mins < 0;
+  mins = Math.abs(Math.round(mins));
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return (neg ? '-' : '') + h + ':' + String(m).padStart(2, '0');
+}
+
+// duration-in-minutes -> decimal hours, 2dp (e.g. 8.75)
+function toDecimalHours(mins) {
+  if (mins == null || isNaN(mins)) return null;
+  return Math.round((mins / 60) * 100) / 100;
+}
+
+const WEEKDAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+// Accepts "2026/03/26", Excel date serials, or JS Date -> returns a UTC-noon Date (avoids TZ drift)
+function parseDateFlexible(raw) {
+  if (raw == null || raw === '') return null;
+  if (raw instanceof Date) {
+    return new Date(Date.UTC(raw.getFullYear(), raw.getMonth(), raw.getDate(), 12));
+  }
+  if (typeof raw === 'number') {
+    // Excel serial date (days since 1899-12-30)
+    const epoch = Date.UTC(1899, 11, 30);
+    const ms = epoch + Math.round(raw) * 86400000;
+    const d = new Date(ms);
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12));
+  }
+  const s = String(raw).trim();
+  let m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) return new Date(Date.UTC(+m[1], +m[2]-1, +m[3], 12));
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (m) return new Date(Date.UTC(+m[3], +m[2]-1, +m[1], 12));
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 12));
+  return null;
+}
+
+function dateKey(d) { // "2026/03/26" canonical key
+  return d.getUTCFullYear() + '/' + String(d.getUTCMonth()+1).padStart(2,'0') + '/' + String(d.getUTCDate()).padStart(2,'0');
+}
+function dateShort(d) { // "26 Mar 2026"
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return d.getUTCDate() + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+}
+function monthKey(d) { const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return months[d.getUTCMonth()]+' '+d.getUTCFullYear(); }
+
+// Wednesday-start week key + label, given a UTC-noon Date
+function weekStart(d) {
+  const dow = d.getUTCDay(); // 0=Sun..6=Sat
+  const diffToWed = (dow - 3 + 7) % 7; // days since most recent Wednesday
+  const ws = new Date(d.getTime());
+  ws.setUTCDate(ws.getUTCDate() - diffToWed);
+  return ws;
+}
+function weekKey(d) { return dateKey(weekStart(d)); }
+function weekLabel(d) {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const ws = weekStart(d);
+  const we = new Date(ws.getTime()); we.setUTCDate(we.getUTCDate()+6);
+  const sameMonth = ws.getUTCMonth() === we.getUTCMonth();
+  return sameMonth
+    ? `${ws.getUTCDate()} ${months[ws.getUTCMonth()]}–${we.getUTCDate()} ${months[we.getUTCMonth()]}`
+    : `${ws.getUTCDate()} ${months[ws.getUTCMonth()]}–${we.getUTCDate()} ${months[we.getUTCMonth()]}`;
+}
+
+function employerFromId(id) {
+  return String(id || '').trim().toUpperCase().startsWith('SD') ? 'Primeserve' : 'Olympic Paints';
+}
+
+function snapIn(mins) { return mins <= RULES.SNAP_IN_MAX ? RULES.SNAP_IN_TO : mins; }
+function snapOut(mins) { return (mins >= RULES.SNAP_OUT_MIN && mins <= RULES.SNAP_OUT_MAX) ? RULES.SNAP_OUT_TO : mins; }
+
+/* ------------------------------- app state ------------------------------- */
+
+const state = {
+  punches: [],     // {id, firstName, lastName, department, employer, dateKey, dateObj, minutes}
+  records: [],      // one per employee/day — the computed "Clocking Report" rows
+  currentTab: 'overview',
+  theme: 'dark',
+  charts: {},       // Chart.js instances, keyed by canvas id (destroyed/recreated on redraw)
+};
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.toggle('error', !!isError);
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 3200);
+}
+function setProgress(pct) {
+  const line = document.getElementById('progressLine'), bar = document.getElementById('progressBar');
+  if (pct === null) { line.classList.remove('show'); bar.style.width = '0%'; return; }
+  line.classList.add('show'); bar.style.width = pct + '%';
+}
+
+/* ------------------------------ file import ------------------------------ */
+/*
+  Two supported input shapes, auto-detected per sheet/header:
+  1. A raw Advius "Transaction*.xlsx" export — columns typically:
+     First Name, Last Name, ID, Department, Date, Time, Weekday, Data Source,
+     Device Name, Device Serial No., Punch State, Location, Remarks
+  2. A previously exported "Clocking Report YTD.xlsx" from this app — its
+     "Raw Data" sheet has the same column shape, so re-importing an old
+     export continues to accumulate correctly instead of losing history.
+*/
+function normalizeHeader(h) { return String(h || '').trim().toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+function findCol(headerRow, candidates) {
+  const norm = headerRow.map(normalizeHeader);
+  for (const c of candidates) {
+    const idx = norm.indexOf(normalizeHeader(c));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
+function extractPunchesFromSheet(rows) {
+  // Find the header row: the first row containing recognizable column names
+  let headerRowIdx = -1, headerRow = null;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const row = rows[i].map(v => String(v || ''));
+    const norm = row.map(normalizeHeader);
+    if (norm.includes('id') && (norm.includes('date')) && (norm.includes('time') || norm.includes('clockin'))) {
+      headerRowIdx = i; headerRow = rows[i]; break;
+    }
+  }
+  if (headerRowIdx === -1) return [];
+
+  const cFirst = findCol(headerRow, ['First Name', 'FirstName']);
+  const cLast = findCol(headerRow, ['Last Name', 'LastName']);
+  const cId = findCol(headerRow, ['ID', 'Employee ID', 'EmployeeID']);
+  const cDept = findCol(headerRow, ['Department']);
+  const cDate = findCol(headerRow, ['Date']);
+  const cTime = findCol(headerRow, ['Time']);
+
+  if (cId === -1 || cDate === -1 || cTime === -1) return [];
+
+  const out = [];
+  for (let i = headerRowIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+    const id = row[cId];
+    if (id == null || String(id).trim() === '') continue;
+    const dateObj = parseDateFlexible(row[cDate]);
+    const minutes = parseClockToMinutes(row[cTime]);
+    if (!dateObj || minutes == null) continue;
+    out.push({
+      id: String(id).trim(),
+      firstName: cFirst !== -1 ? String(row[cFirst] || '').trim() : '',
+      lastName: cLast !== -1 ? String(row[cLast] || '').trim() : '',
+      department: cDept !== -1 ? String(row[cDept] || '').trim() : 'Unassigned',
+      employer: employerFromId(id),
+      dateKey: dateKey(dateObj),
+      dateObj,
+      minutes,
+    });
+  }
+  return out;
+}
+
+function handleFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  if (typeof XLSX === 'undefined') {
+    showToast('The Excel library failed to load — check your internet connection, then reload the page.', true);
+    return;
+  }
+  setProgress(10);
+  let pending = files.length, added = 0, failed = [];
+
+  files.forEach((file) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: false });
+        let filePunches = [];
+        wb.SheetNames.forEach((name) => {
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null });
+          const p = extractPunchesFromSheet(rows);
+          filePunches = filePunches.concat(p);
+        });
+        added += filePunches.length;
+        state.punches = state.punches.concat(filePunches);
+      } catch (err) {
+        failed.push(file.name);
+        console.error('Import failed for', file.name, err);
+      } finally {
+        pending--;
+        setProgress(10 + Math.round(((files.length - pending) / files.length) * 80));
+        if (pending === 0) finishImport(added, failed);
+      }
+    };
+    reader.onerror = () => { pending--; failed.push(file.name); if (pending === 0) finishImport(added, failed); };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function finishImport(added, failed) {
+  dedupePunches();
+  rebuildRecords();
+  setProgress(100);
+  setTimeout(() => setProgress(null), 300);
+  if (added === 0 && state.punches.length === 0) {
+    showToast('No recognizable punch rows found in the file(s).', true);
+    return;
+  }
+  if (failed.length) showToast(`Imported with issues — could not read: ${failed.join(', ')}`, true);
+  else showToast(`Imported ${added.toLocaleString()} punch record(s). Total on file: ${state.punches.length.toLocaleString()}.`);
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  document.getElementById('exportWorkbookBtn').disabled = false;
+  renderAll();
+}
+
+function dedupePunches() {
+  const seen = new Set();
+  const out = [];
+  for (const p of state.punches) {
+    const key = p.id + '|' + p.dateKey + '|' + p.minutes + '|' + p.department;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(p);
+  }
+  state.punches = out;
+}
+
+/* ------------------------------ core engine ------------------------------
+   Groups raw punches by (Employee ID, Date), applies the payroll rules, and
+   produces one "record" per employee/day — the equivalent of a row in the
+   reference workbook's "Clocking Report" sheet.
+   -------------------------------------------------------------------------- */
+function rebuildRecords() {
+  const groups = new Map(); // key: id|dateKey -> {punches:[], meta}
+  for (const p of state.punches) {
+    const key = p.id + '|' + p.dateKey;
+    if (!groups.has(key)) {
+      groups.set(key, { id: p.id, dateKey: p.dateKey, dateObj: p.dateObj, employer: p.employer, times: [], firstName: p.firstName, lastName: p.lastName, department: p.department });
+    }
+    const g = groups.get(key);
+    g.times.push(p.minutes);
+    // Prefer the most complete name/department seen for this employee/day
+    if (p.firstName) g.firstName = p.firstName;
+    if (p.lastName) g.lastName = p.lastName;
+    if (p.department) g.department = p.department;
+  }
+
+  const records = [];
+  for (const g of groups.values()) {
+    const times = g.times.slice().sort((a, b) => a - b);
+    const totalPunches = times.length;
+    let clockIn = null, clockOut = null, missType = null;
+
+    if (totalPunches === 1) {
+      const t = times[0];
+      if (t < RULES.SINGLE_PUNCH_CUTOFF) { clockIn = snapIn(t); missType = 'out'; }
+      else { clockOut = snapOut(t); missType = 'in'; }
+    } else {
+      clockIn = snapIn(times[0]);
+      clockOut = snapOut(times[times.length - 1]);
+    }
+
+    let grossMin = null, breakMin = null, netMin = null;
+    if (clockIn != null && clockOut != null) {
+      let g_ = clockOut - clockIn;
+      if (g_ < 0) g_ += 24 * 60; // guard against an overnight shift crossing midnight
+      grossMin = g_;
+      breakMin = RULES.BREAK_MINUTES;
+      netMin = Math.max(0, grossMin - breakMin);
+    }
+
+    records.push({
+      dateKey: g.dateKey,
+      dateObj: g.dateObj,
+      weekday: WEEKDAY_NAMES[g.dateObj.getUTCDay()],
+      firstName: g.firstName,
+      lastName: g.lastName,
+      id: g.id,
+      department: g.department || 'Unassigned',
+      employer: g.employer,
+      clockIn, clockOut, grossMin, breakMin, netMin,
+      totalPunches, missType,
+    });
+  }
+
+  records.sort((a, b) => a.dateObj - b.dateObj || a.id.localeCompare(b.id));
+  state.records = records;
+}
+
+/* ------------------------------ aggregations ------------------------------ */
+
+function periodMeta() {
+  if (!state.records.length) return null;
+  const dates = state.records.map(r => r.dateObj);
+  const min = new Date(Math.min(...dates)), max = new Date(Math.max(...dates));
+  const ids = new Set(state.records.map(r => r.id));
+  const opIds = new Set(state.records.filter(r => r.employer === 'Olympic Paints').map(r => r.id));
+  const psIds = new Set(state.records.filter(r => r.employer === 'Primeserve').map(r => r.id));
+  return { min, max, totalEmployees: ids.size, opEmployees: opIds.size, psEmployees: psIds.size };
+}
+
+function filterRecords({ from, to, employer, search } = {}) {
+  return state.records.filter(r => {
+    if (from && r.dateObj < from) return false;
+    if (to && r.dateObj > to) return false;
+    if (employer && employer !== 'all' && r.employer !== employer) return false;
+    if (search) {
+      const s = search.toLowerCase();
+      const hay = (r.firstName + ' ' + r.lastName + ' ' + r.id + ' ' + r.department).toLowerCase();
+      if (!hay.includes(s)) return false;
+    }
+    return true;
+  });
+}
+
+function employerSummary(records) {
+  const byEmp = { 'Olympic Paints': { employees: new Set(), shiftDays: 0, missing: 0, netMin: 0 },
+                  'Primeserve': { employees: new Set(), shiftDays: 0, missing: 0, netMin: 0 } };
+  records.forEach(r => {
+    const b = byEmp[r.employer]; if (!b) return;
+    b.employees.add(r.id); b.shiftDays++;
+    if (r.missType) b.missing++;
+    if (r.netMin != null) b.netMin += r.netMin;
+  });
+  return Object.entries(byEmp).map(([employer, b]) => ({
+    employer, employees: b.employees.size, shiftDays: b.shiftDays, missing: b.missing,
+    totalMin: b.netMin, avgPerShift: b.shiftDays ? b.netMin / b.shiftDays : 0,
+    pctMissing: b.shiftDays ? (b.missing / b.shiftDays) * 100 : 0,
+    compliance: b.shiftDays ? 100 - (b.missing / b.shiftDays) * 100 : 100,
+  }));
+}
+
+function dailySummary(records) {
+  const byDate = new Map();
+  records.forEach(r => {
+    if (!byDate.has(r.dateKey)) byDate.set(r.dateKey, { dateKey: r.dateKey, dateObj: r.dateObj, weekday: r.weekday, employees: new Set(), punches: 0, missing: 0, netMin: 0 });
+    const b = byDate.get(r.dateKey);
+    b.employees.add(r.id); b.punches += r.totalPunches;
+    if (r.missType) b.missing++;
+    if (r.netMin != null) b.netMin += r.netMin;
+  });
+  return Array.from(byDate.values())
+    .map(b => ({ ...b, employees: b.employees.size, avgPerPerson: b.employees ? b.netMin / (b.employees) : 0 }))
+    .sort((a, b) => a.dateObj - b.dateObj);
+}
+
+function departmentSummary(records) {
+  const byKey = new Map();
+  records.forEach(r => {
+    const key = r.employer + '|' + r.department;
+    if (!byKey.has(key)) byKey.set(key, { employer: r.employer, department: r.department, employees: new Set(), shiftDays: 0, missing: 0, netMin: 0 });
+    const b = byKey.get(key);
+    b.employees.add(r.id); b.shiftDays++;
+    if (r.missType) b.missing++;
+    if (r.netMin != null) b.netMin += r.netMin;
+  });
+  return Array.from(byKey.values()).map(b => ({
+    ...b, employees: b.employees.size,
+    avgPerShift: b.shiftDays ? b.netMin / b.shiftDays : 0,
+    pctMissing: b.shiftDays ? (b.missing / b.shiftDays) * 100 : 0,
+  })).sort((a, b) => b.netMin - a.netMin);
+}
+
+function weeklySummary(records) {
+  // Per employee, hours bucketed into Wed-Tue weeks (decimal hours) + monthly + grand total
+  const byEmployee = new Map();
+  const weekKeysSeen = new Map(); // weekKey -> {label, dateObj (week start)}
+  const monthKeysSeen = new Map(); // monthKey -> order index
+
+  records.forEach(r => {
+    if (r.netMin == null) return;
+    const wk = weekKey(r.dateObj);
+    if (!weekKeysSeen.has(wk)) weekKeysSeen.set(wk, { label: weekLabel(r.dateObj), start: weekStart(r.dateObj) });
+    const mk = monthKey(r.dateObj);
+    if (!monthKeysSeen.has(mk)) monthKeysSeen.set(mk, r.dateObj);
+
+    const empKey = r.id;
+    if (!byEmployee.has(empKey)) {
+      byEmployee.set(empKey, { employer: r.employer, id: r.id, firstName: r.firstName, lastName: r.lastName, weeks: {}, months: {}, total: 0 });
+    }
+    const e = byEmployee.get(empKey);
+    e.weeks[wk] = (e.weeks[wk] || 0) + r.netMin;
+    e.months[mk] = (e.months[mk] || 0) + r.netMin;
+    e.total += r.netMin;
+  });
+
+  const weekOrder = Array.from(weekKeysSeen.entries()).sort((a, b) => a[1].start - b[1].start);
+  const monthOrder = Array.from(monthKeysSeen.entries()).sort((a, b) => a[1] - b[1]);
+
+  return {
+    employees: Array.from(byEmployee.values()).sort((a, b) => a.employer.localeCompare(b.employer) || a.firstName.localeCompare(b.firstName)),
+    weekOrder, monthOrder,
+  };
+}
+
+function missingLog(records) {
+  return records.filter(r => r.missType).map(r => ({
+    dateKey: r.dateKey, dateObj: r.dateObj, weekday: r.weekday,
+    firstName: r.firstName, lastName: r.lastName, id: r.id, department: r.department, employer: r.employer,
+    issue: r.missType === 'in' ? 'Missed Clock-In' : 'Missed Clock-Out',
+    punchTime: fmtClock(r.missType === 'in' ? r.clockOut : r.clockIn),
+    totalPunches: r.totalPunches,
+  })).sort((a, b) => a.dateObj - b.dateObj);
+}
+
+function payrollCycle2525(referenceDate) {
+  // Current 25th-to-25th cycle containing referenceDate
+  const d = referenceDate;
+  const day = d.getUTCDate();
+  let start, end;
+  if (day >= 25) {
+    start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 25, 12));
+    end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 25, 12));
+  } else {
+    start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 25, 12));
+    end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 25, 12));
+  }
+  return { start, end };
+}
+
+/* -------------------------------- rendering ------------------------------- */
+
+function el(tag, attrs, children) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) { if (k === 'class') e.className = attrs[k]; else if (k === 'html') e.innerHTML = attrs[k]; else e.setAttribute(k, attrs[k]); }
+  (children || []).forEach(c => e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+  return e;
+}
+
+// Generic sortable table renderer.
+// columns: [{key, label, num, render(row), footer(rows)}]
+function renderTable(tableEl, columns, rows, opts) {
+  opts = opts || {};
+  tableEl.innerHTML = '';
+  const thead = el('thead'), trh = el('tr');
+  columns.forEach((c, i) => {
+    const th = el('th', { class: c.num ? 'num' : '' }, [c.label]);
+    th.addEventListener('click', () => {
+      const dir = tableEl._sortCol === i && tableEl._sortDir === 1 ? -1 : 1;
+      tableEl._sortCol = i; tableEl._sortDir = dir;
+      rows.sort((a, b) => {
+        const av = c.sortVal ? c.sortVal(a) : (c.render ? c.render(a) : a[c.key]);
+        const bv = c.sortVal ? c.sortVal(b) : (c.render ? c.render(b) : b[c.key]);
+        if (av == null) return 1; if (bv == null) return -1;
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+        return String(av).localeCompare(String(bv)) * dir;
+      });
+      renderTable(tableEl, columns, rows, opts);
+    });
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh); tableEl.appendChild(thead);
+
+  const tbody = el('tbody');
+  const displayRows = opts.limit ? rows.slice(0, opts.limit) : rows;
+  if (!displayRows.length) {
+    const tr = el('tr'); const td = el('td', { colspan: String(columns.length) }, ['No records for this filter.']);
+    td.style.textAlign = 'center'; td.style.color = 'var(--text-faint)'; td.style.padding = '28px 12px';
+    tr.appendChild(td); tbody.appendChild(tr);
+  }
+  displayRows.forEach(row => {
+    const tr = el('tr');
+    columns.forEach(c => {
+      const td = el('td', { class: c.num ? 'num tabular' : '' });
+      const content = c.render ? c.render(row) : (row[c.key] ?? '');
+      if (content instanceof Node) td.appendChild(content); else td.textContent = content;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  tableEl.appendChild(tbody);
+
+  if (opts.footer) {
+    const tfoot = el('tfoot'); const tr = el('tr');
+    columns.forEach(c => {
+      const td = el('td', { class: c.num ? 'num tabular' : '' });
+      const content = c.footer ? c.footer(rows) : '';
+      td.textContent = content;
+      tr.appendChild(td);
+    });
+    tfoot.appendChild(tr); tableEl.appendChild(tfoot);
+  }
+}
+
+function employerBadge(employer) {
+  return el('span', { class: 'badge ' + (employer === 'Primeserve' ? 'ps' : 'op') }, [employer === 'Primeserve' ? 'PS' : 'OP']);
+}
+
+function themeColor(varName) {
+  return getComputedStyle(document.body).getPropertyValue(varName).trim();
+}
+
+function makeChart(canvasId, config) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  if (typeof Chart === 'undefined') {
+    const wrap = ctx.closest('.chart-wrap');
+    if (wrap && !wrap.querySelector('.chart-fallback')) {
+      wrap.appendChild(el('div', { class: 'chart-fallback', style: 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-faint);font-size:12px;text-align:center;padding:12px;' },
+        ['Chart library failed to load — check your internet connection and reload. Tables below still work.']));
+    }
+    return;
+  }
+  if (state.charts[canvasId]) state.charts[canvasId].destroy();
+  state.charts[canvasId] = new Chart(ctx, config);
+}
+
+function chartDefaults() {
+  return {
+    text: themeColor('--text-dim'), grid: themeColor('--border-soft'),
+    accent: themeColor('--accent'), op: themeColor('--chart-op'), ps: themeColor('--chart-ps'),
+    warn: themeColor('--warn'), bad: themeColor('--bad'), good: themeColor('--good'),
+  };
+}
+
+function baseScales(c) {
+  return {
+    x: { ticks: { color: c.text, font: { size: 10.5 } }, grid: { color: 'transparent' } },
+    y: { ticks: { color: c.text, font: { size: 10.5 } }, grid: { color: c.grid }, beginAtZero: true },
+  };
+}
+
+/* ------------------------------ header / meta ------------------------------ */
+
+function updateHeaderMeta() {
+  const meta = periodMeta();
+  const headerEl = document.getElementById('headerMeta');
+  if (!meta) { headerEl.textContent = 'No data loaded yet'; return; }
+  headerEl.innerHTML = `Period: <b>${dateShort(meta.min)} – ${dateShort(meta.max)}</b> &nbsp;·&nbsp; ` +
+    `<b>${meta.totalEmployees}</b> employees (Olympic Paints: ${meta.opEmployees} · Primeserve: ${meta.psEmployees}) &nbsp;·&nbsp; ` +
+    `${state.punches.length.toLocaleString()} raw punches`;
+}
+
+/* -------------------------------- OVERVIEW -------------------------------- */
+
+function renderOverview() {
+  const meta = periodMeta();
+  const emp = employerSummary(state.records);
+  const opRow = emp.find(e => e.employer === 'Olympic Paints') || { employees:0, shiftDays:0, missing:0, totalMin:0 };
+  const psRow = emp.find(e => e.employer === 'Primeserve') || { employees:0, shiftDays:0, missing:0, totalMin:0 };
+  const totalShiftDays = opRow.shiftDays + psRow.shiftDays;
+  const totalMissing = opRow.missing + psRow.missing;
+  const totalMin = opRow.totalMin + psRow.totalMin;
+  const compliance = totalShiftDays ? (100 - (totalMissing / totalShiftDays) * 100) : 100;
+
+  const kpis = document.getElementById('overviewKpis');
+  kpis.innerHTML = '';
+  const cards = [
+    { label: 'Total Employees', value: meta ? meta.totalEmployees : 0, sub: 'Across both employers' },
+    { label: 'Total Hours Worked', value: fmtDuration(totalMin), sub: 'Net of 45 min/day break', cls:'accent' },
+    { label: 'Total Shift-Days', value: totalShiftDays.toLocaleString(), sub: meta ? `${dateShort(meta.min)} – ${dateShort(meta.max)}` : '' },
+    { label: 'Missing Clock Out', value: totalMissing.toLocaleString(), sub: `${(100-compliance).toFixed(1)}% of shift-days`, cls:'warn' },
+    { label: 'Overall Compliance', value: compliance.toFixed(1) + '%', sub: 'Complete shift records', cls: compliance >= 90 ? 'good' : (compliance >= 75 ? 'warn' : 'bad') },
+  ];
+  cards.forEach(c => kpis.appendChild(el('div', { class: 'kpi ' + (c.cls||'') }, [
+    el('div', { class: 'label' }, [c.label]), el('div', { class: 'value' }, [String(c.value)]), el('div', { class: 'sub' }, [c.sub]),
+  ])));
+
+  const c = chartDefaults();
+
+  makeChart('chartHoursByEmployer', { type: 'doughnut', data: {
+    labels: ['Olympic Paints', 'Primeserve'],
+    datasets: [{ data: [opRow.totalMin/60, psRow.totalMin/60], backgroundColor: [c.op, c.ps], borderWidth: 0 }],
+  }, options: { plugins: { legend: { labels: { color: c.text } } }, cutout: '62%' } });
+
+  makeChart('chartMissByEmployer', { type: 'bar', data: {
+    labels: ['Olympic Paints', 'Primeserve'],
+    datasets: [{ label: 'Missing Clock Outs', data: [opRow.missing, psRow.missing], backgroundColor: [c.op, c.ps], borderRadius: 6 }],
+  }, options: { plugins: { legend: { display: false } }, scales: baseScales(c) } });
+
+  makeChart('chartAvgShift', { type: 'bar', data: {
+    labels: ['Olympic Paints', 'Primeserve'],
+    datasets: [{ label: 'Avg Hrs/Shift', data: [opRow.avgPerShift/60, psRow.avgPerShift/60], backgroundColor: [c.op, c.ps], borderRadius: 6 }],
+  }, options: { plugins: { legend: { display: false } }, scales: baseScales(c) } });
+
+  const byEmployee = new Map();
+  state.records.forEach(r => {
+    if (r.netMin == null) return;
+    const key = r.id;
+    if (!byEmployee.has(key)) byEmployee.set(key, { name: `${r.firstName} ${r.lastName}`.trim() || r.id, employer: r.employer, min: 0 });
+    byEmployee.get(key).min += r.netMin;
+  });
+  const top10 = Array.from(byEmployee.values()).sort((a,b) => b.min - a.min).slice(0, 10);
+  makeChart('chartTop10Hours', { type: 'bar', data: {
+    labels: top10.map(e => e.name),
+    datasets: [{ label: 'Hours (YTD)', data: top10.map(e => Math.round(e.min/60)), backgroundColor: top10.map(e => e.employer === 'Primeserve' ? c.ps : c.op), borderRadius: 6 }],
+  }, options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: baseScales(c) } });
+
+  const wk = weeklySummary(state.records);
+  const weekLabels = wk.weekOrder.map(([, v]) => v.label);
+  const opWeekly = wk.weekOrder.map(([key]) => {
+    let sum = 0; wk.employees.filter(e => e.employer === 'Olympic Paints').forEach(e => sum += (e.weeks[key] || 0));
+    return Math.round(sum/60);
+  });
+  const psWeekly = wk.weekOrder.map(([key]) => {
+    let sum = 0; wk.employees.filter(e => e.employer === 'Primeserve').forEach(e => sum += (e.weeks[key] || 0));
+    return Math.round(sum/60);
+  });
+  makeChart('chartWeeklyTrend', { type: 'line', data: {
+    labels: weekLabels,
+    datasets: [
+      { label: 'Olympic Paints', data: opWeekly, borderColor: c.op, backgroundColor: c.op, tension: .3, pointRadius: 2 },
+      { label: 'Primeserve', data: psWeekly, borderColor: c.ps, backgroundColor: c.ps, tension: .3, pointRadius: 2 },
+    ],
+  }, options: { plugins: { legend: { labels: { color: c.text } } }, scales: baseScales(c) } });
+
+  const tbl = document.getElementById('tblEmployerSummary');
+  renderTable(tbl, [
+    { key: 'employer', label: 'Employer', render: r => employerBadge(r.employer) },
+    { key: 'employees', label: 'Employees', num: true },
+    { key: 'shiftDays', label: 'Shift-Days', num: true },
+    { key: 'missing', label: 'Missing Clock Out', num: true },
+    { key: 'totalMin', label: 'Total Hours', num: true, render: r => fmtDuration(r.totalMin) },
+    { key: 'avgPerShift', label: 'Avg Hrs/Shift', num: true, render: r => fmtDuration(r.avgPerShift) },
+    { key: 'pctMissing', label: '% Missing', num: true, render: r => r.pctMissing.toFixed(1) + '%' },
+    { key: 'compliance', label: 'Compliance', num: true, render: r => r.compliance.toFixed(1) + '%' },
+  ], emp);
+}
+
+/* -------------------------------- YESTERDAY -------------------------------- */
+
+function renderYesterday() {
+  if (!state.records.length) return;
+  const maxDate = new Date(Math.max(...state.records.map(r => r.dateObj)));
+  const dayRecords = state.records.filter(r => r.dateKey === dateKey(maxDate));
+  const missing = dayRecords.filter(r => r.missType);
+
+  const kpis = document.getElementById('yesterdayKpis'); kpis.innerHTML = '';
+  [
+    { label: 'Date', value: dateShort(maxDate) },
+    { label: 'Employees Punched', value: dayRecords.length },
+    { label: 'Missing Clock Out/In', value: missing.length, cls: missing.length ? 'warn' : 'good' },
+  ].forEach(c => kpis.appendChild(el('div', { class: 'kpi ' + (c.cls||'') }, [
+    el('div', { class: 'label' }, [c.label]), el('div', { class: 'value' }, [String(c.value)]),
+  ])));
+
+  document.getElementById('yesterdayCount').textContent = `${missing.length} record(s) needing action`;
+  renderTable(document.getElementById('tblYesterday'), [
+    { key: 'name', label: 'Name', render: r => el('span', { class: 'name-cell' }, [`${r.firstName} ${r.lastName}`.trim() || r.id]) },
+    { key: 'id', label: 'Employee ID' },
+    { key: 'department', label: 'Department' },
+    { key: 'employer', label: 'Employer', render: r => employerBadge(r.employer) },
+    { key: 'issue', label: 'Issue', render: r => el('span', { class: 'badge ' + (r.missType === 'in' ? 'miss-in' : 'miss-out') }, [r.missType === 'in' ? 'Missed Clock-In' : 'Missed Clock-Out']) },
+    { key: 'time', label: 'Punch Time', render: r => fmtClock(r.missType === 'in' ? r.clockOut : r.clockIn) },
+  ], missing);
+}
+
+/* ---------------------------- DAILY ATTENDANCE ---------------------------- */
+
+function getDailyFilters() {
+  const from = document.getElementById('dailyFrom').value ? parseDateFlexible(document.getElementById('dailyFrom').value) : null;
+  const to = document.getElementById('dailyTo').value ? parseDateFlexible(document.getElementById('dailyTo').value) : null;
+  const employer = document.getElementById('dailyEmployer').value;
+  return { from, to, employer };
+}
+
+function renderDaily() {
+  const f = getDailyFilters();
+  const recs = filterRecords(f);
+  const daily = dailySummary(recs);
+
+  const c = chartDefaults();
+  makeChart('chartDaily', { data: {
+    labels: daily.map(d => dateShort(d.dateObj)),
+    datasets: [
+      { type: 'bar', label: 'Employees', data: daily.map(d => d.employees), backgroundColor: c.accent, borderRadius: 4, yAxisID: 'y' },
+      { type: 'line', label: 'Missing Clock Out', data: daily.map(d => d.missing), borderColor: c.bad, backgroundColor: c.bad, tension: .25, pointRadius: 2, yAxisID: 'y1' },
+    ],
+  }, options: {
+    plugins: { legend: { labels: { color: c.text } } },
+    scales: {
+      x: { ticks: { color: c.text, maxRotation: 60, minRotation: 0, font: { size: 9 } }, grid: { color: 'transparent' } },
+      y: { position: 'left', ticks: { color: c.text }, grid: { color: c.grid }, beginAtZero: true },
+      y1: { position: 'right', ticks: { color: c.text }, grid: { display: false }, beginAtZero: true },
+    },
+  }});
+
+  document.getElementById('dailyCount').textContent = `${daily.length} day(s)`;
+  renderTable(document.getElementById('tblDaily'), [
+    { key: 'date', label: 'Date', render: r => dateShort(r.dateObj) },
+    { key: 'weekday', label: 'Weekday' },
+    { key: 'employees', label: 'Employees', num: true },
+    { key: 'punches', label: 'Total Punches', num: true },
+    { key: 'missing', label: 'Missing Clock Out', num: true },
+    { key: 'netMin', label: 'Total Hours', num: true, render: r => fmtDuration(r.netMin) },
+    { key: 'avgPerPerson', label: 'Avg Hrs/Person', num: true, render: r => fmtDuration(r.avgPerPerson) },
+    { key: 'compliance', label: 'Compliance', num: true, sortVal: r => r.employees ? 100-(r.missing/r.employees)*100 : 100,
+      render: r => (r.employees ? (100-(r.missing/r.employees)*100).toFixed(1) : '100.0') + '%' },
+  ], daily, { footer: true });
+}
+
+/* ------------------------------- DEPARTMENTS ------------------------------- */
+
+function renderDepartments() {
+  const empFilter = document.querySelector('#deptEmployerChips .chip.active').dataset.emp;
+  const recs = filterRecords({ employer: empFilter });
+  const depts = departmentSummary(recs);
+
+  const c = chartDefaults();
+  const opDepts = departmentSummary(state.records.filter(r => r.employer === 'Olympic Paints')).slice(0, 12);
+  const psDepts = departmentSummary(state.records.filter(r => r.employer === 'Primeserve')).slice(0, 12);
+  makeChart('chartDeptHoursOP', { type: 'bar', data: {
+    labels: opDepts.map(d => d.department), datasets: [{ data: opDepts.map(d => Math.round(d.netMin/60)), backgroundColor: c.op, borderRadius: 5 }],
+  }, options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: baseScales(c) } });
+  makeChart('chartDeptHoursPS', { type: 'bar', data: {
+    labels: psDepts.map(d => d.department), datasets: [{ data: psDepts.map(d => Math.round(d.netMin/60)), backgroundColor: c.ps, borderRadius: 5 }],
+  }, options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: baseScales(c) } });
+
+  document.getElementById('deptCount').textContent = `${depts.length} department(s)`;
+  renderTable(document.getElementById('tblDept'), [
+    { key: 'employer', label: 'Employer', render: r => employerBadge(r.employer) },
+    { key: 'department', label: 'Department' },
+    { key: 'employees', label: 'Employees', num: true },
+    { key: 'shiftDays', label: 'Shift-Days', num: true },
+    { key: 'missing', label: 'Missing Clock Out', num: true },
+    { key: 'netMin', label: 'Total Hours', num: true, render: r => fmtDuration(r.netMin) },
+    { key: 'avgPerShift', label: 'Avg Hrs/Shift', num: true, render: r => fmtDuration(r.avgPerShift) },
+    { key: 'pctMissing', label: '% Missing', num: true, render: r => r.pctMissing.toFixed(1) + '%' },
+  ], depts);
+}
+
+/* -------------------------------- WEEKLY HOURS -------------------------------- */
+
+function renderWeekly() {
+  const wk = weeklySummary(state.records);
+  const rangeBtn = document.querySelector('#weeklyRangeChips .chip.active');
+  const range = rangeBtn ? rangeBtn.dataset.range : 'all';
+  const employer = document.getElementById('weeklyEmployer').value;
+  const search = document.getElementById('weeklySearch').value.trim().toLowerCase();
+
+  let weeks = wk.weekOrder;
+  if (range !== 'all') weeks = weeks.slice(-parseInt(range, 10));
+
+  let employees = wk.employees;
+  if (employer !== 'all') employees = employees.filter(e => e.employer === employer);
+  if (search) employees = employees.filter(e => (`${e.firstName} ${e.lastName} ${e.id}`).toLowerCase().includes(search));
+
+  document.getElementById('weeklyCount').textContent = `${employees.length} employee(s) · ${weeks.length} week(s) shown`;
+
+  const columns = [
+    { key: 'employer', label: 'Employer', render: r => employerBadge(r.employer) },
+    { key: 'id', label: 'Employee ID' },
+    { key: 'name', label: 'Name', render: r => el('span', { class: 'name-cell' }, [`${r.firstName} ${r.lastName}`.trim()]) },
+  ];
+  weeks.forEach(([key, v]) => columns.push({ key: 'w_' + key, label: v.label, num: true, render: r => r.weeks[key] ? toDecimalHours(r.weeks[key]).toFixed(2) : '' }));
+  columns.push({ key: 'total', label: 'Grand Total', num: true, render: r => {
+    const shown = weeks.reduce((s, [key]) => s + (r.weeks[key] || 0), 0);
+    return toDecimalHours(range === 'all' ? r.total : shown).toFixed(2);
+  }, footer: rows => toDecimalHours(rows.reduce((s, r) => s + (range === 'all' ? r.total : weeks.reduce((ss,[k]) => ss+(r.weeks[k]||0), 0)), 0)).toFixed(2) });
+
+  renderTable(document.getElementById('tblWeekly'), columns, employees, { footer: true });
+}
+
+/* ----------------------------- MISSING CLOCK OUT ----------------------------- */
+
+function renderMissing() {
+  const employer = document.getElementById('missingEmployer').value;
+  const search = document.getElementById('missingSearch').value.trim().toLowerCase();
+  let log = missingLog(state.records);
+  if (employer !== 'all') log = log.filter(m => m.employer === employer);
+  if (search) log = log.filter(m => (`${m.firstName} ${m.lastName} ${m.id} ${m.department}`).toLowerCase().includes(search));
+
+  const missIn = log.filter(m => m.issue === 'Missed Clock-In').length;
+  const missOut = log.filter(m => m.issue === 'Missed Clock-Out').length;
+  const kpis = document.getElementById('missingKpis'); kpis.innerHTML = '';
+  [
+    { label: 'Total Missing', value: log.length, cls: 'warn' },
+    { label: 'Missed Clock-Out', value: missOut },
+    { label: 'Missed Clock-In', value: missIn },
+  ].forEach(c => kpis.appendChild(el('div', { class: 'kpi ' + (c.cls||'') }, [
+    el('div', { class: 'label' }, [c.label]), el('div', { class: 'value' }, [String(c.value)]),
+  ])));
+
+  const c = chartDefaults();
+  const byEmployee = new Map();
+  log.forEach(m => { const k = m.id; const name = `${m.firstName} ${m.lastName}`.trim() || m.id; byEmployee.set(k, (byEmployee.get(k)||{name,count:0,employer:m.employer})); byEmployee.get(k).count++; });
+  const top10 = Array.from(byEmployee.values()).sort((a,b)=>b.count-a.count).slice(0,10);
+  makeChart('chartTop10Missing', { type: 'bar', data: {
+    labels: top10.map(e=>e.name), datasets:[{ data: top10.map(e=>e.count), backgroundColor: top10.map(e=>e.employer==='Primeserve'?c.ps:c.op), borderRadius:5 }],
+  }, options: { indexAxis:'y', plugins:{legend:{display:false}}, scales: baseScales(c) } });
+
+  const byDept = new Map();
+  log.filter(m => m.employer === 'Olympic Paints').forEach(m => byDept.set(m.department, (byDept.get(m.department)||0)+1));
+  const deptArr = Array.from(byDept.entries()).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  makeChart('chartMissByDept', { type: 'bar', data: {
+    labels: deptArr.map(d=>d[0]), datasets:[{ data: deptArr.map(d=>d[1]), backgroundColor: c.warn, borderRadius:5 }],
+  }, options: { indexAxis:'y', plugins:{legend:{display:false}}, scales: baseScales(c) } });
+
+  document.getElementById('missingCount').textContent = `${log.length} record(s)`;
+  renderTable(document.getElementById('tblMissing'), [
+    { key: 'date', label: 'Date', render: r => dateShort(r.dateObj) },
+    { key: 'weekday', label: 'Day' },
+    { key: 'name', label: 'Name', render: r => `${r.firstName} ${r.lastName}`.trim() || r.id },
+    { key: 'id', label: 'Employee ID' },
+    { key: 'department', label: 'Department' },
+    { key: 'employer', label: 'Employer', render: r => employerBadge(r.employer) },
+    { key: 'issue', label: 'Issue', render: r => el('span', { class: 'badge ' + (r.issue==='Missed Clock-In'?'miss-in':'miss-out') }, [r.issue]) },
+    { key: 'punchTime', label: 'Punch Time' },
+  ], log, { limit: 2000 });
+}
+
+/* --------------------------------- MONTHLY --------------------------------- */
+
+function renderMonthly() {
+  const fromInput = document.getElementById('monthlyFrom'), toInput = document.getElementById('monthlyTo');
+  if (!fromInput.value && !toInput.value && state.records.length) {
+    const maxDate = new Date(Math.max(...state.records.map(r => r.dateObj)));
+    const { start, end } = payrollCycle2525(maxDate);
+    fromInput.value = start.toISOString().slice(0, 10);
+    toInput.value = end.toISOString().slice(0, 10);
+  }
+  const from = fromInput.value ? parseDateFlexible(fromInput.value) : null;
+  const to = toInput.value ? parseDateFlexible(toInput.value) : null;
+  const employer = document.getElementById('monthlyEmployer').value;
+  const recs = filterRecords({ from, to, employer });
+
+  const byEmployee = new Map();
+  recs.forEach(r => {
+    if (!byEmployee.has(r.id)) byEmployee.set(r.id, { id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), employer: r.employer, department: r.department, shiftDays: 0, missing: 0, netMin: 0 });
+    const e = byEmployee.get(r.id);
+    e.shiftDays++; if (r.missType) e.missing++; if (r.netMin != null) e.netMin += r.netMin;
+  });
+  const rows = Array.from(byEmployee.values()).sort((a,b)=>b.netMin-a.netMin);
+
+  const totalMin = rows.reduce((s,r)=>s+r.netMin,0);
+  const totalMissing = rows.reduce((s,r)=>s+r.missing,0);
+  const totalShiftDays = rows.reduce((s,r)=>s+r.shiftDays,0);
+  const kpis = document.getElementById('monthlyKpis'); kpis.innerHTML = '';
+  [
+    { label: 'Employees', value: rows.length },
+    { label: 'Shift-Days', value: totalShiftDays },
+    { label: 'Total Hours', value: fmtDuration(totalMin), cls: 'accent' },
+    { label: 'Missing Clock Out', value: totalMissing, cls: 'warn' },
+  ].forEach(c => kpis.appendChild(el('div', { class: 'kpi ' + (c.cls||'') }, [
+    el('div', { class: 'label' }, [c.label]), el('div', { class: 'value' }, [String(c.value)]),
+  ])));
+
+  document.getElementById('monthlyCount').textContent = `${rows.length} employee(s)`;
+  renderTable(document.getElementById('tblMonthly'), [
+    { key: 'employer', label: 'Employer', render: r => employerBadge(r.employer) },
+    { key: 'id', label: 'Employee ID' },
+    { key: 'name', label: 'Name' },
+    { key: 'department', label: 'Department' },
+    { key: 'shiftDays', label: 'Shift-Days', num: true },
+    { key: 'missing', label: 'Missing Clock Out', num: true },
+    { key: 'netMin', label: 'Total Hours', num: true, render: r => fmtDuration(r.netMin) },
+  ], rows, { footer: true });
+}
+
+/* ------------------------------- render dispatch ------------------------------- */
+
+const RENDERERS = { overview: renderOverview, yesterday: renderYesterday, daily: renderDaily, departments: renderDepartments, weekly: renderWeekly, missing: renderMissing, monthly: renderMonthly };
+
+function renderAll() {
+  updateHeaderMeta();
+  RENDERERS[state.currentTab] && RENDERERS[state.currentTab]();
+}
+
+/* -------------------------------- excel export -------------------------------- */
+
+function appName() {
+  return 'OP-Clocking-Dashboard';
+}
+function timestampedFilename(suffix, ext) {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  return `${appName()}_${suffix}_${stamp}.${ext}`;
+}
+
+function sheetFromRows(title, subtitleLines, headerRow, dataRows) {
+  const aoa = [[title], ...subtitleLines.map(s => [s]), [], headerRow, ...dataRows];
+  return XLSX.utils.aoa_to_sheet(aoa);
+}
+
+function exportWorkbook() {
+  if (typeof XLSX === 'undefined') { showToast('The Excel library failed to load — check your internet connection, then reload the page.', true); return; }
+  if (!state.records.length) { showToast('Nothing to export yet — import punch data first.', true); return; }
+  const meta = periodMeta();
+  const periodStr = `Period: ${dateShort(meta.min)} – ${dateShort(meta.max)}`;
+  const wb = XLSX.utils.book_new();
+
+  // Clocking Report (master, one row per employee/day)
+  const crHeader = ['Date','Day','First Name','Last Name','Employee ID','Department','Employer','Clock In','Clock Out','Gross Hours','Break Deducted','Hours Worked','Total Punches'];
+  const crRows = state.records.map(r => [
+    r.dateKey, r.weekday, r.firstName, r.lastName, r.id, r.department, r.employer,
+    r.clockIn != null ? fmtClock(r.clockIn) : '', r.clockOut != null ? fmtClock(r.clockOut) : '',
+    r.grossMin != null ? fmtDuration(r.grossMin) : '', r.breakMin != null ? fmtDuration(r.breakMin) : '',
+    r.netMin != null ? fmtDuration(r.netMin) : '', r.totalPunches,
+  ]);
+  XLSX.utils.book_append_sheet(wb, sheetFromRows('Olympic Paints — Clocking Report',
+    [periodStr + `    |    Employees: ${meta.totalEmployees} (Olympic Paints: ${meta.opEmployees}  |  Primeserve: ${meta.psEmployees})    |    Records: ${state.records.length}`,
+     'Hours Worked is NET of a fixed 45 min break deduction per day. Clock-in ≤ 07:20 is recorded as 07:15. Clock-out 16:50–17:10 is recorded as 17:00.'],
+    crHeader, crRows), 'Clocking Report');
+
+  // Summary by Date
+  const daily = dailySummary(state.records);
+  const sdHeader = ['Date','Weekday','Employees','Total Punches','Missing Clock Out','Total Hours','Avg Hrs/Person'];
+  const sdRows = daily.map(d => [d.dateKey, d.weekday, d.employees, d.punches, d.missing, fmtDuration(d.netMin), fmtDuration(d.avgPerPerson)]);
+  sdRows.push(['TOTAL / AVERAGE', '', meta.totalEmployees, daily.reduce((s,d)=>s+d.punches,0), daily.reduce((s,d)=>s+d.missing,0), fmtDuration(daily.reduce((s,d)=>s+d.netMin,0)), '']);
+  XLSX.utils.book_append_sheet(wb, sheetFromRows('Olympic Paints — Daily Summary', [periodStr], sdHeader, sdRows), 'Summary by Date');
+
+  // Summary by Employer
+  const emp = employerSummary(state.records);
+  const seHeader = ['Employer','Unique Employees','Shift-Days','Missing Clock Out','Total Hours','Avg Hrs/Shift','% Missing'];
+  const seRows = emp.map(e => [e.employer, e.employees, e.shiftDays, e.missing, fmtDuration(e.totalMin), fmtDuration(e.avgPerShift), e.pctMissing.toFixed(1)+'%']);
+  XLSX.utils.book_append_sheet(wb, sheetFromRows('Olympic Paints — Employer Summary', [periodStr], seHeader, seRows), 'Summary by Employer');
+
+  // Weekly Summary
+  const wk = weeklySummary(state.records);
+  const wsHeader = ['Employer','Employee ID','First Name','Last Name', ...wk.weekOrder.map(([,v])=>v.label), ...wk.monthOrder.map(([k])=>k), 'Grand Total'];
+  const wsRows = wk.employees.map(e => [
+    e.employer, e.id, e.firstName, e.lastName,
+    ...wk.weekOrder.map(([k]) => e.weeks[k] ? toDecimalHours(e.weeks[k]) : ''),
+    ...wk.monthOrder.map(([k]) => e.months[k] ? toDecimalHours(e.months[k]) : ''),
+    toDecimalHours(e.total),
+  ]);
+  const totalsRow = ['TOTAL','','','',
+    ...wk.weekOrder.map(([k]) => toDecimalHours(wk.employees.reduce((s,e)=>s+(e.weeks[k]||0),0))),
+    ...wk.monthOrder.map(([k]) => toDecimalHours(wk.employees.reduce((s,e)=>s+(e.months[k]||0),0))),
+    toDecimalHours(wk.employees.reduce((s,e)=>s+e.total,0)),
+  ];
+  wsRows.push(totalsRow);
+  XLSX.utils.book_append_sheet(wb, sheetFromRows('Olympic Paints — Weekly Hours Summary by Employee',
+    [`Weeks shown: ${wk.weekOrder.length}`, 'Hours shown are NET (45 min break deducted per day). Weeks run Wed–Tue.'], wsHeader, wsRows), 'Weekly Summary');
+
+  // Summary by Department
+  const depts = departmentSummary(state.records);
+  const ddHeader = ['Employer','Department','Unique Employees','Shift-Days','Missing Clock Out','Total Hours','Avg Hrs/Shift','% Missing'];
+  const ddRows = depts.map(d => [d.employer, d.department, d.employees, d.shiftDays, d.missing, fmtDuration(d.netMin), fmtDuration(d.avgPerShift), d.pctMissing.toFixed(1)+'%']);
+  ddRows.push(['','TOTAL', meta.totalEmployees, depts.reduce((s,d)=>s+d.shiftDays,0), depts.reduce((s,d)=>s+d.missing,0), fmtDuration(depts.reduce((s,d)=>s+d.netMin,0)), '', '']);
+  XLSX.utils.book_append_sheet(wb, sheetFromRows('Olympic Paints — Department Summary', [periodStr], ddHeader, ddRows), 'Summary by Department');
+
+  // Missing Clock Out
+  const log = missingLog(state.records);
+  const mcHeader = ['Date','Day','First Name','Last Name','Employee ID','Department','Employer','Miss Type','Clock Time','Total Punches'];
+  const mcRows = log.map(m => [m.dateKey, m.weekday, m.firstName, m.lastName, m.id, m.department, m.employer, m.issue, m.punchTime, m.totalPunches]);
+  XLSX.utils.book_append_sheet(wb, sheetFromRows('Olympic Paints — Missing Clocking Records',
+    [`${log.length} missing clocking record(s): ${log.filter(m=>m.issue==='Missed Clock-Out').length} missed clock-out, ${log.filter(m=>m.issue==='Missed Clock-In').length} missed clock-in.`],
+    mcHeader, mcRows), 'Missing Clock Out');
+
+  // Raw Data (accumulated punches — re-importable to continue building history)
+  const rdHeader = ['First Name','Last Name','ID','Department','Date','Time','Weekday','Data Source','Device Name','Device Serial No.','Punch State','Location','Remarks'];
+  const rdRows = state.punches.map(p => [p.firstName, p.lastName, p.id, p.department, p.dateKey, fmtClock(p.minutes), WEEKDAY_NAMES[p.dateObj.getUTCDay()], 'Device', '', '', '--', '--', '--']);
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(`Accumulated Raw Punch Data — ${periodStr}`, [], rdHeader, rdRows), 'Raw Data');
+
+  XLSX.writeFile(wb, timestampedFilename('YTD', 'xlsx'));
+  showToast('Workbook exported.');
+}
+
+function exportSimple(headerRow, rows, filenameSuffix, sheetTitle) {
+  if (typeof XLSX === 'undefined') { showToast('The Excel library failed to load — check your internet connection, then reload the page.', true); return; }
+  const ws = XLSX.utils.aoa_to_sheet([headerRow, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetTitle.slice(0, 31));
+  XLSX.writeFile(wb, timestampedFilename(filenameSuffix, 'xlsx'));
+  showToast('Export ready.');
+}
+
+/* --------------------------------- wiring --------------------------------- */
+
+function switchTab(tab) {
+  state.currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+  RENDERERS[tab] && RENDERERS[tab]();
+}
+
+function applyTheme(theme) {
+  state.theme = theme;
+  document.body.setAttribute('data-theme', theme);
+  document.querySelectorAll('#themeSwitch [data-theme-btn]').forEach(b => b.classList.toggle('active', b.dataset.themeBtn === theme));
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.setAttribute('content', getComputedStyle(document.body).getPropertyValue('--bg').trim());
+  if (state.records.length) requestAnimationFrame(() => RENDERERS[state.currentTab] && RENDERERS[state.currentTab]());
+}
+
+function init() {
+  document.getElementById('fileInput').addEventListener('change', (e) => { handleFiles(e.target.files); e.target.value = ''; });
+
+  ['dragover','dragenter'].forEach(evt => document.body.addEventListener(evt, (e) => { e.preventDefault(); }));
+  document.body.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  });
+
+  document.getElementById('exportWorkbookBtn').addEventListener('click', exportWorkbook);
+
+  document.querySelectorAll('#themeSwitch [data-theme-btn]').forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.themeBtn)));
+
+  document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+
+  // Daily tab filters
+  ['dailyFrom','dailyTo','dailyEmployer'].forEach(id => document.getElementById(id).addEventListener('change', renderDaily));
+  document.getElementById('dailyExportBtn').addEventListener('click', () => {
+    const daily = dailySummary(filterRecords(getDailyFilters()));
+    exportSimple(['Date','Weekday','Employees','Total Punches','Missing Clock Out','Total Hours','Avg Hrs/Person'],
+      daily.map(d => [d.dateKey, d.weekday, d.employees, d.punches, d.missing, fmtDuration(d.netMin), fmtDuration(d.avgPerPerson)]),
+      'DailyAttendance', 'Daily Attendance');
+  });
+
+  // Departments tab
+  document.querySelectorAll('#deptEmployerChips .chip').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#deptEmployerChips .chip').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); renderDepartments();
+  }));
+
+  // Weekly tab
+  document.querySelectorAll('#weeklyRangeChips .chip').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#weeklyRangeChips .chip').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); renderWeekly();
+  }));
+  ['weeklyEmployer'].forEach(id => document.getElementById(id).addEventListener('change', renderWeekly));
+  document.getElementById('weeklySearch').addEventListener('input', debounce(renderWeekly, 200));
+  document.getElementById('weeklyExportBtn').addEventListener('click', () => {
+    const wk = weeklySummary(state.records);
+    const header = ['Employer','Employee ID','First Name','Last Name', ...wk.weekOrder.map(([,v])=>v.label), 'Grand Total'];
+    const rows = wk.employees.map(e => [e.employer, e.id, e.firstName, e.lastName, ...wk.weekOrder.map(([k]) => e.weeks[k]?toDecimalHours(e.weeks[k]):''), toDecimalHours(e.total)]);
+    exportSimple(header, rows, 'WeeklyHours', 'Weekly Summary');
+  });
+
+  // Missing tab
+  ['missingEmployer'].forEach(id => document.getElementById(id).addEventListener('change', renderMissing));
+  document.getElementById('missingSearch').addEventListener('input', debounce(renderMissing, 200));
+  document.getElementById('missingExportBtn').addEventListener('click', () => {
+    const log = missingLog(state.records);
+    exportSimple(['Date','Day','First Name','Last Name','Employee ID','Department','Employer','Miss Type','Clock Time','Total Punches'],
+      log.map(m => [m.dateKey, m.weekday, m.firstName, m.lastName, m.id, m.department, m.employer, m.issue, m.punchTime, m.totalPunches]),
+      'MissingClockOut', 'Missing Clock Out');
+  });
+
+  // Monthly tab
+  ['monthlyFrom','monthlyTo','monthlyEmployer'].forEach(id => document.getElementById(id).addEventListener('change', renderMonthly));
+  document.getElementById('monthlyResetBtn').addEventListener('click', () => {
+    if (!state.records.length) return;
+    const maxDate = new Date(Math.max(...state.records.map(r => r.dateObj)));
+    const { start, end } = payrollCycle2525(maxDate);
+    document.getElementById('monthlyFrom').value = start.toISOString().slice(0,10);
+    document.getElementById('monthlyTo').value = end.toISOString().slice(0,10);
+    renderMonthly();
+  });
+  document.getElementById('monthlyExportBtn').addEventListener('click', () => {
+    const from = document.getElementById('monthlyFrom').value ? parseDateFlexible(document.getElementById('monthlyFrom').value) : null;
+    const to = document.getElementById('monthlyTo').value ? parseDateFlexible(document.getElementById('monthlyTo').value) : null;
+    const employer = document.getElementById('monthlyEmployer').value;
+    const recs = filterRecords({ from, to, employer });
+    const byEmployee = new Map();
+    recs.forEach(r => {
+      if (!byEmployee.has(r.id)) byEmployee.set(r.id, { id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), employer: r.employer, department: r.department, shiftDays: 0, missing: 0, netMin: 0 });
+      const e = byEmployee.get(r.id); e.shiftDays++; if (r.missType) e.missing++; if (r.netMin != null) e.netMin += r.netMin;
+    });
+    const rows = Array.from(byEmployee.values()).sort((a,b)=>b.netMin-a.netMin);
+    exportSimple(['Employer','Employee ID','Name','Department','Shift-Days','Missing Clock Out','Total Hours'],
+      rows.map(r => [r.employer, r.id, r.name, r.department, r.shiftDays, r.missing, fmtDuration(r.netMin)]),
+      'Monthly', 'Monthly');
+  });
+}
+
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+
+
+</body>
+</html>
