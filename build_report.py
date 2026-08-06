@@ -159,8 +159,20 @@ def month_key(d):
     return f'{MONTH_NAMES[d.month-1]} {d.year}'
 
 
+def _clean_id(raw):
+    """Normalizes an Employee ID cell. Long numeric IDs (e.g. biometric
+    device serials like 7403056768186) are sometimes read back from Excel
+    as floats rather than ints — str(7403056768186.0) would otherwise
+    produce '7403056768186.0' and silently split one employee into two
+    different IDs across imports. Whole-number floats are coerced to int
+    first so the ID stays stable no matter how the source file typed it."""
+    if isinstance(raw, float) and raw.is_integer():
+        return str(int(raw))
+    return str(raw).strip()
+
+
 def employer_from_id(emp_id):
-    return 'Primeserve' if str(emp_id).strip().upper().startswith('SD') else 'Olympic Paints'
+    return 'Primeserve' if _clean_id(emp_id).upper().startswith('SD') else 'Olympic Paints'
 
 
 def snap_in(mins):
@@ -221,7 +233,7 @@ def extract_punches_from_workbook(path):
             if d is None or t is None:
                 continue
             punches.append({
-                'id': str(emp_id).strip(),
+                'id': _clean_id(emp_id),
                 'first_name': str(row[c_first]).strip() if c_first is not None and row[c_first] else '',
                 'last_name': str(row[c_last]).strip() if c_last is not None and row[c_last] else '',
                 'department': str(row[c_dept]).strip() if c_dept is not None and row[c_dept] else 'Unassigned',
@@ -269,15 +281,23 @@ def write_master(master_path, punches):
 # --------------------------------------------------------------------------
 def build_records(punches):
     groups = defaultdict(list)
-    meta = {}
     for p in punches:
         key = (p['id'], p['date'])
-        groups[key].append(p['minutes'])
-        meta[key] = p  # last-seen punch supplies name/department for that day
+        groups[key].append(p)
 
     records = []
-    for (emp_id, d), times in groups.items():
-        times = sorted(times)
+    for (emp_id, d), day_punches in groups.items():
+        # Sort the day's punches by time — this determines clock-in/out AND which
+        # punch's name/department apply. A day can have conflicting department
+        # tags across punches (an employee transferred departments mid-period);
+        # the clock-in punch's tag is the one that counts, matching payroll
+        # practice (confirmed against the reference workbook: an employee who
+        # moved from "Drivers" to "Monthly Employees" mid-year, with a stray
+        # early punch still tagged with the old department, was filed under
+        # the old department for that day — i.e. by clock-in, not last-seen).
+        day_punches.sort(key=lambda p: p['minutes'])
+        times = [p['minutes'] for p in day_punches]
+        first, last = day_punches[0], day_punches[-1]
         total_punches = len(times)
         clock_in = clock_out = miss_type = None
 
@@ -300,11 +320,13 @@ def build_records(punches):
             break_min = BREAK_MINUTES
             net_min = max(0, gross_min - break_min)
 
-        m = meta[(emp_id, d)]
         records.append({
             'date': d, 'weekday': WEEKDAY_NAMES[d.weekday()],
-            'first_name': m['first_name'], 'last_name': m['last_name'], 'id': emp_id,
-            'department': m['department'] or 'Unassigned', 'employer': employer_from_id(emp_id),
+            'first_name': first['first_name'] or last['first_name'],
+            'last_name': first['last_name'] or last['last_name'],
+            'id': emp_id,
+            'department': first['department'] or last['department'] or 'Unassigned',
+            'employer': employer_from_id(emp_id),
             'clock_in': clock_in, 'clock_out': clock_out,
             'gross_min': gross_min, 'break_min': break_min, 'net_min': net_min,
             'total_punches': total_punches, 'miss_type': miss_type,
