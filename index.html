@@ -1434,6 +1434,15 @@ function renderWeeklySummaryTable(weeks, employees, range) {
     { key: 'name', label: 'Name', render: r => `${r.firstName} ${r.lastName}`.trim(), sortVal: r => `${r.firstName} ${r.lastName}` },
   ];
 
+  // Single source of truth for the "Grand Total" column — the sum of only the
+  // currently visible weeks (respects the Last 2 / Last 4 / All range chip).
+  // Rendering and sorting both use this, so the sort order can never disagree
+  // with the number actually shown in the column.
+  function displayTotal(r) {
+    if (!weeks.length) return r.total;
+    return weeks.reduce((s, [key]) => s + (r.weeks[key] || 0), 0);
+  }
+
   const thead = el('thead'), trh = el('tr');
   fixedCols.forEach((c, i) => {
     const th = el('th', {}, [c.label]);
@@ -1454,7 +1463,7 @@ function renderWeeklySummaryTable(weeks, employees, range) {
   totalTh.addEventListener('click', () => {
     const dir = tableEl._sortKey === 'total' && tableEl._sortDir === 1 ? -1 : 1;
     tableEl._sortKey = 'total'; tableEl._sortDir = dir;
-    employees.sort((a, b) => (a.total - b.total) * dir);
+    employees.sort((a, b) => (displayTotal(a) - displayTotal(b)) * dir);
     renderWeeklySummaryTable(weeks, employees, range);
   });
   trh.appendChild(totalTh);
@@ -1480,8 +1489,7 @@ function renderWeeklySummaryTable(weeks, employees, range) {
       td.addEventListener('click', () => { state.weeklyDrillWeek = key; renderWeekly(); });
       tr.appendChild(td);
     });
-    const shown = weeks.reduce((s, [key]) => s + (r.weeks[key] || 0), 0);
-    const totalTd = el('td', { class: 'num tabular' }, [toDecimalHours(weeks.length === 0 ? r.total : shown).toFixed(2)]);
+    const totalTd = el('td', { class: 'num tabular' }, [toDecimalHours(displayTotal(r)).toFixed(2)]);
     tr.appendChild(totalTd);
     tbody.appendChild(tr);
   });
@@ -1493,7 +1501,7 @@ function renderWeeklySummaryTable(weeks, employees, range) {
     const sum = employees.reduce((s, r) => s + (r.weeks[key] || 0), 0);
     tr.appendChild(el('td', { class: 'num tabular' }, [toDecimalHours(sum).toFixed(2)]));
   });
-  const grand = employees.reduce((s, r) => s + weeks.reduce((ss, [key]) => ss + (r.weeks[key] || 0), 0), 0);
+  const grand = employees.reduce((s, r) => s + displayTotal(r), 0);
   tr.appendChild(el('td', { class: 'num tabular' }, [toDecimalHours(grand).toFixed(2)]));
   tfoot.appendChild(tr); tableEl.appendChild(tfoot);
 }
