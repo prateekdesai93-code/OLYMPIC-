@@ -47,6 +47,7 @@ Usage:
 """
 
 import argparse
+import re
 import sys
 from collections import defaultdict
 from datetime import datetime, date, timedelta
@@ -171,7 +172,19 @@ def _clean_id(raw):
     return str(raw).strip()
 
 
-def employer_from_id(emp_id):
+def employer_from_record(emp_id, department):
+    """Determines which employer an employee belongs to. Originally this checked
+    only whether the Employee ID starts with "SD" — that held for every record
+    in the original ~13,700-row dataset (verified: every department tagged
+    "(Primeserve)", "(Primserve)", or ending "(P)" mapped 1:1 to SD-prefixed
+    IDs, no exceptions). But newer Primeserve hires (e.g. department
+    "Production Department (P)") are being given plain numeric IDs with no
+    "SD" prefix at all — so ID-prefix alone now misclassifies them as Olympic
+    Paints. Department is the more reliable signal going forward; ID-prefix is
+    kept as a fallback for rows with unusable department text."""
+    dept = str(department or '').strip()
+    if re.search(r'prim(e)?serve', dept, re.IGNORECASE) or re.search(r'\(p\)\s*$', dept, re.IGNORECASE):
+        return 'Primeserve'
     return 'Primeserve' if _clean_id(emp_id).upper().startswith('SD') else 'Olympic Paints'
 
 
@@ -320,13 +333,14 @@ def build_records(punches):
             break_min = BREAK_MINUTES
             net_min = max(0, gross_min - break_min)
 
+        dept_resolved = first['department'] or last['department'] or 'Unassigned'
         records.append({
             'date': d, 'weekday': WEEKDAY_NAMES[d.weekday()],
             'first_name': first['first_name'] or last['first_name'],
             'last_name': first['last_name'] or last['last_name'],
             'id': emp_id,
-            'department': first['department'] or last['department'] or 'Unassigned',
-            'employer': employer_from_id(emp_id),
+            'department': dept_resolved,
+            'employer': employer_from_record(emp_id, dept_resolved),
             'clock_in': clock_in, 'clock_out': clock_out,
             'gross_min': gross_min, 'break_min': break_min, 'net_min': net_min,
             'total_punches': total_punches, 'miss_type': miss_type,
