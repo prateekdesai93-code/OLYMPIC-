@@ -606,7 +606,18 @@ function weekLabel(d) {
   return `${pad(ws.getUTCDate())} ${months[ws.getUTCMonth()]}–${pad(we.getUTCDate())} ${months[we.getUTCMonth()]}`;
 }
 
-function employerFromId(id) {
+// Determines which employer an employee belongs to. Originally this checked only
+// whether the Employee ID starts with "SD" — that held for every record in the
+// original ~13,700-row dataset (verified: every department tagged "(Primeserve)",
+// "(Primserve)", or ending "(P)" mapped 1:1 to SD-prefixed IDs, no exceptions).
+// But newer Primeserve hires (e.g. department "Production Department (P)") are
+// being given plain numeric IDs with no "SD" prefix at all — so ID-prefix alone
+// now misclassifies them as Olympic Paints. Department is the more reliable
+// signal going forward; ID-prefix is kept as a fallback for rows with unusable
+// department text.
+function employerFromRecord(id, department) {
+  const dept = String(department || '').trim();
+  if (/prim(e)?serve/i.test(dept) || /\(p\)\s*$/i.test(dept)) return 'Primeserve';
   return String(id || '').trim().toUpperCase().startsWith('SD') ? 'Primeserve' : 'Olympic Paints';
 }
 
@@ -710,12 +721,13 @@ function extractPunchesFromSheet(rows) {
     const dateObj = parseDateFlexible(row[cDate]);
     const minutes = parseClockToMinutes(row[cTime]);
     if (!dateObj || minutes == null) continue;
+    const department = cDept !== -1 ? String(row[cDept] || '').trim() : 'Unassigned';
     out.push({
       id: String(id).trim(),
       firstName: cFirst !== -1 ? String(row[cFirst] || '').trim() : '',
       lastName: cLast !== -1 ? String(row[cLast] || '').trim() : '',
-      department: cDept !== -1 ? String(row[cDept] || '').trim() : 'Unassigned',
-      employer: employerFromId(id),
+      department,
+      employer: employerFromRecord(id, department),
       dateKey: dateKey(dateObj),
       dateObj,
       minutes,
@@ -2103,8 +2115,9 @@ function loadEmbeddedData() {
 
   state.punches = payload.punches.map(p => {
     const dateObj = parseDateFlexible(p.d);
-    return { id: p.id, firstName: p.f || '', lastName: p.l || '', department: p.dept || 'Unassigned',
-      employer: employerFromId(p.id), dateKey: dateKey(dateObj), dateObj, minutes: p.m };
+    const department = p.dept || 'Unassigned';
+    return { id: p.id, firstName: p.f || '', lastName: p.l || '', department,
+      employer: employerFromRecord(p.id, department), dateKey: dateKey(dateObj), dateObj, minutes: p.m };
   }).filter(p => p.dateObj && p.minutes != null);
 
   dedupePunches();
